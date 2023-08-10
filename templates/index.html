@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Nova Payroll Processor</title>
+    <style>
+        /* Center everything vertically and horizontally */
+        body {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            margin: 0;
+        }
+        
+        /* Add some spacing between buttons */
+        form {
+            margin-bottom: 30px;
+        }
+    </style>
+</head>
+<body>
+    <h1>Nova Payroll Processor</h1>
+    <h3>1. Upload Shift Record</h3> 
+    <form action="/shift_record" method="POST" enctype="multipart/form-data">
+        <input type="file" name="shift_record">
+        <button type="submit">Upload Shift Record</button>
+    </form>
+    <h3>2. Upload Old Tracker</h3> 
+    <form action="/old_tracker" method="POST" enctype="multipart/form-data">
+        <input type="file" name="old_tracker">
+        <button type="submit">Upload Old Tracker</button>
+    </form>
+    <h3>3. Process Payroll</h3> 
+    <form action="/process" method="POST">
+        <button type="submit">Process Files</button>
+    </form>
+    <h3>4. Save Outputs</h3> 
+    <form action="/save" method="POST">
+        <button type="submit">Save Files</button>
+    </form>
+        <h3>Refresh</h3> 
+    <form action="/refresh">
+        <button type="submit">Refresh</button>
+    </form>
+</body>
+</html>
