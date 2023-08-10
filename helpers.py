@@ -5,7 +5,6 @@ This file contains all the helper functions for the payroll-processing web appli
 '''
 
 # Import Python packages
-# Note: We're only using packages that come with Anaconda's standard distribution: https://www.anaconda.com/ 
 import numpy as np
 import pandas as pd # For importing, manipulating, and exporting data
 import re # Python regular expression support
@@ -26,9 +25,17 @@ import os
 
 
 def test():
+    '''
+    Test helpers.py
+    '''
     return "Hello World"
 
 def delete_files_in_folder(folder_path):
+    '''
+    Delete all files in a folder path (for refreshing the webapp).
+
+    folder_path -- path to folder
+    '''
     try:
         for file_name in os.listdir(folder_path):
             file_path = os.path.join(folder_path, file_name)
@@ -95,6 +102,7 @@ def approved_holiday_hours(years):
     #create a time interval object
     Range = namedtuple('Range', ['start', 'end'])
     approved_holiday_dt = []
+    #append holiday hours according to Nova's unique rule.
     for x in approved_holiday(years):
         if (x.month == 12 and x.day == 31):
             approved_holiday_dt.append(Range(start = datetime.datetime.combine(x, datetime.time(hour=23)),end = datetime.datetime.combine(x+datetime.timedelta(days=1), datetime.time(hour=23))))
@@ -105,8 +113,11 @@ def approved_holiday_hours(years):
 def work_holiday_overlap(work_range, ahh_list):
     '''
     Get the overlap of worked hours and approved holiday hours
+
     work_range -- the range of the worked shifts during the pay cycle
     ahh_list -- a list of approved holiday hours (datetim range)
+
+    return the total overlapping time in minutes.
     '''
     total_overlap = 0.0
     for ahh in ahh_list:
@@ -197,9 +208,10 @@ def split_by_work_week(df):
 def read_shift_record(shift_record_path):
     '''
     Read in shift records, check for errors, and return cleaned dataset along with other relevant info.
+
     shift_record_path -- file path to shift record
 
-    return df, PAY_PERIOD, start_date, end_date (last edit point)
+    return a pandas dataframe df, and strings PAY_PERIOD, start_date, end_date 
     '''
     #read dataset from path
     try:
@@ -310,9 +322,14 @@ def read_shift_record(shift_record_path):
 
 def read_old_tracker(old_tracker_path, start_date):
     '''
-    Read the old tracker, check for errors, and return manager_rates, non_manager_rates, staff_info, accrued_hrs, 
-    bonus_df, prepaid_last_time, unpaid_last_time
+    Read the old tracker and check for errors
+
+    old_tracker_path -- path to the old tracker
+    start_date -- start date of the pay cycle
+     
+    return pandas dataframes: manager_rates, non_manager_rates, staff_info, accrued_hrs, bonus_df, prepaid_last_time, unpaid_last_time
     '''
+    #read tabs in the spreadsheet
     manager_rates = pd.read_excel(old_tracker_path, sheet_name="MANAGER INFO")
     non_manager_rates = pd.read_excel(old_tracker_path, sheet_name="SHIFT INFO")
     staff_info = pd.read_excel(old_tracker_path, sheet_name="STAFF INFO")
@@ -354,14 +371,15 @@ def read_old_tracker(old_tracker_path, start_date):
                 stf_info2.loc[index, level] = row['# OA']
             elif row['HSS Level'] == level:
                 stf_info2.loc[index, level] = row['# HSS']
-    # Remove the original BST Level, OA Level, and HSS Level columns
+    # Remove the original BST Level, OA Level, and HSS Level columns and create a new dataframe
     stf_info2 = stf_info2.drop(['BST Level', 'OA Level', 'HSS Level', '# HSS', '# BST', '# OA', 'Hire Date', 
                                 'Accrual Rate', 'Days Elapsed Since Hire Date', 'Admin/Sick/Vacay Wage'], axis=1)
     stf_info2 = stf_info2.rename(columns=lambda x: x.replace("# ", ""))
     stf_info2.columns = stf_info2.columns.str.strip()
     stf_info2 = stf_info2.fillna(0)
     stf_info2 = stf_info2.replace(r'^\s*$', 0, regex=True)
-    avs_wage = []
+    avs_wage = [] #average wage 
+    #Calculate regular rate.
     for index, row in stf_info2.iterrows():
         sum_total = 0
         total_hrs = 0
@@ -370,6 +388,7 @@ def read_old_tracker(old_tracker_path, start_date):
             total_hrs += value
         avs_wage.append(sum_total/total_hrs)
     staff_info['Admin/Sick/Vacay Wage'] = avs_wage
+    #Clean Bonus record 
     bonus_df = bonus_df.drop(['First Name', 'Last Name'], axis=1)
     bonus_df = bonus_df.rename(columns={'Full Name': 'Name'})
     bonus = pd.DataFrame(columns=["Name", "Date", "Bonus Amount"])
@@ -380,6 +399,7 @@ def read_old_tracker(old_tracker_path, start_date):
                 date = row[bon_num+' Date']
                 amount = row[bon_num]
                 bonus = bonus.append({"Name": name, "Date": date, "Bonus Amount": amount},ignore_index=True)
+    # Format bonus dataframe
     bonus_df['Premium Pay 1 Check-In Time'] = pd.to_datetime(bonus_df['Premium Pay 1 Check-In Time'], format='%H:%M:%S').dt.time
     bonus_df['Premium Pay 2 Check-In Time'] = pd.to_datetime(bonus_df['Premium Pay 2 Check-In Time'], format='%H:%M:%S').dt.time
     bonus_df['Premium Pay 3 Check-In Time'] = pd.to_datetime(bonus_df['Premium Pay 3 Check-In Time'], format='%H:%M:%S').dt.time
@@ -411,8 +431,14 @@ def read_old_tracker(old_tracker_path, start_date):
 
 def merge_shifts(df, staff_info, manager_rates, non_manager_rates):
     '''
+    Merge shift records with information from the tracker, include RBT conversion, Admin wage inclusion, and merging shift with hourly rates.
+    
     df -- a pandas dataframe containing shift records
+    staff_info -- a pandas dataframe version of the STAFF INFO TAB of the old tracker
+    manager_rates -- a pandas dataframe version of the MANAGER INFO TAB of the old tracker
+    non_manager_rates -- a pandas dataframe version of the SHIFT INFO TAB of the old tracker
 
+    return merged datafarme df_shift_merged
     '''
     #Convert RBT to BST
     for _, row in df.iterrows():
@@ -453,8 +479,11 @@ def merge_shifts(df, staff_info, manager_rates, non_manager_rates):
 
 def calc_time_off(df_shift_merged):
     '''
+    Collect and Calculate Vacation and Sick time for each employee.
+
     df_shift_merged -- a pandas dataframe containing shift records merged with tracker information
 
+    return dataframes df_shift_merged, time_off, time_off_as_shifts
     '''
     #time off
     all_names = df_shift_merged['Name'].drop_duplicates()
@@ -463,28 +492,32 @@ def calc_time_off(df_shift_merged):
     sick_shift_sum = all_names.to_frame().merge(sick_shift_sum, on='Name', how='left').fillna(0)
     sick_shift_sum = sick_shift_sum.rename(columns={'Min. Worked': 'Sick Hrs'})
     sick_shift_sum['Sick Hrs'] = sick_shift_sum['Sick Hrs']/60
-    # vacation cash-out
+    #vacation cash-out
     vac_shift_sum = df_shift_merged[df_shift_merged['Shift'] == 'Vacation'].groupby('Name')['Min. Worked'].sum().reset_index()
     vac_shift_sum = all_names.to_frame().merge(vac_shift_sum, on='Name', how='left').fillna(0)
     vac_shift_sum = vac_shift_sum.rename(columns={'Min. Worked': 'Vac Hrs'})
     vac_shift_sum['Vac Hrs'] = vac_shift_sum['Vac Hrs']/60
     time_off = vac_shift_sum.merge(sick_shift_sum, on='Name')
+    #time_off_as_shifts is a subset of df_shift_merged with only Sick and Vacation in there.
     time_off_as_shifts = df_shift_merged[((df_shift_merged['Shift'] == 'Sick') | (df_shift_merged['Shift'] == 'Vacation'))]
     df_shift_merged = df_shift_merged[~((df_shift_merged['Shift'] == 'Sick') | (df_shift_merged['Shift'] == 'Vacation'))]
     return (df_shift_merged, time_off, time_off_as_shifts)
 
 def crop_shifts(df, start_date, end_date):
     '''
-    df -- a pandas dataframe containing shift records
+    Crop shift record and keep those that are within this pay cycle.
 
+    df -- a pandas dataframe containing shift records
+    start_date, end_date -- start and end dates of the pay period
+
+    return dataframes df, df_after_pay_period, prepaid_hours,week_order and string PREPAY
     '''
-    #Crop Data and Keep only this pay cycle
-    ### 5a. get shifts that wil be paid in the next pay period
+    # get shifts that wil be paid in the next pay period
     #To be paid Next period:
     df_after_pay_period = deepcopy(df[df['CIDT'] >= end_date])
     # Filter the DataFrame based on the time duration
     df = df[(df['CIDT'] >= start_date) & (df['CIDT'] < end_date)]
-    ### 5a. get shifts that wil be prepaid in this pay cycle (belong to this pay cycle, but falls under the last partial week)
+    ### get shifts that wil be prepaid in this pay cycle (belong to this pay cycle, but falls under the last partial week)
     week_dataframes = split_by_work_week(df)
     week_order = []
     full_week = []
@@ -516,6 +549,9 @@ def crop_shifts(df, start_date, end_date):
     return (df, df_after_pay_period, prepaid_hours,week_order, PREPAY)
 
 def non_manager_payroll(non_mgr, df_shift_merged, accrued_hrs, bonus_df, bonus, time_off, staff_info, week_order, prepaid_last_time, PAY_PERIOD, new_accrued_hrs):   
+    '''
+    Process payroll for non-managers
+    '''
     #Create a list that stores the payroll dictionary
     non_mgr_payroll = []
     #For each non-manager
@@ -637,6 +673,9 @@ def non_manager_payroll(non_mgr, df_shift_merged, accrued_hrs, bonus_df, bonus, 
     return (non_mgr_payroll, new_accrued_hrs)
 
 def manager_payroll(mgr, manager_rates, df_shift_merged, accrued_hrs, bonus_df, bonus, time_off, week_order, prepaid_last_time, PAY_PERIOD, PREPAY, new_accrued_hrs):
+    '''
+    Process payroll for managers
+    '''
     mgr_payroll = []
     df_shift_merged = deepcopy(df_shift_merged)
     aggregations = {'Min. Worked': 'sum', 'Regular Hourly Wage': 'first', 'Name': 'first'}
@@ -756,7 +795,10 @@ def manager_payroll(mgr, manager_rates, df_shift_merged, accrued_hrs, bonus_df, 
                             })      
     return (mgr_payroll, new_accrued_hrs)
 
-def non_manager_weekly_breakdown(non_mgr, df_shift_merged, prepaid_last_time, week_order):   
+def non_manager_weekly_breakdown(non_mgr, df_shift_merged, prepaid_last_time, week_order):  
+    '''
+    Weekly breakdown for non-managers
+    ''' 
     #Create a list that stores the payroll dictionary
     non_mgr_payroll = []
     prepaid_last_time = deepcopy(prepaid_last_time)
@@ -832,6 +874,9 @@ def non_manager_weekly_breakdown(non_mgr, df_shift_merged, prepaid_last_time, we
     return non_mgr_payroll
 
 def manager_weekly_breakdown(mgr, manager_rates, df_shift_merged, week_order, prepaid_last_time, PAY_PERIOD, PREPAY):
+    '''
+    Weekly breakdown for managers
+    '''
     mgr_payroll = []
     df_shift_merged = deepcopy(df_shift_merged)
     #aggregations = {'Min. Worked': 'sum', 'Regular Hourly Wage': 'first', 'Name': 'first'}
@@ -940,6 +985,9 @@ def manager_weekly_breakdown(mgr, manager_rates, df_shift_merged, week_order, pr
 
 def generate_payroll(df_shift_merged, accrued_hrs, bonus_df, bonus, time_off, manager_rates, staff_info, prepaid_last_time, 
                      PAY_PERIOD, week_order, PREPAY):
+    '''
+    Generate payroll files.
+    '''
     staff_names = set(staff_info['Name'].unique()).union(set(manager_rates['Name'].unique()))
     manager_status = [is_manager(i,manager_rates) for i in staff_names]
     non_mgr = [] #list of names
@@ -967,6 +1015,9 @@ def generate_payroll(df_shift_merged, accrued_hrs, bonus_df, bonus, time_off, ma
     return (non_mgr_pr, mgr_pr, non_mgr_bkd, mgr_bkd, new_accrued_hrs)
 
 def output_payroll_files(save_path, df_shift_merged, staff_info, non_mgr_pr, mgr_pr, non_mgr_bkd, mgr_bkd, new_accrued_hrs, original_bonus_df, time_off_as_shifts, non_manager_rates, manager_rates, prepaid_hours, df_after_pay_period, PAY_PERIOD):
+    '''
+    Output payroll files.
+    '''
     df_shift_merged['Holiday Worked Duration (Hours)'] = (df_shift_merged['Holiday Worked Duration (Minutes)']/60).round(2)
     df_shift_merged['Hrs. Worked'] = df_shift_merged['Min. Worked']/60
     df_shift_merged = df_shift_merged.round(decimals=2)
@@ -996,7 +1047,7 @@ def output_payroll_files(save_path, df_shift_merged, staff_info, non_mgr_pr, mgr
     writer.sheets['FINAL PAYROLL'].set_column('A:F', 24)
 
     startrow = 0
-    name="LALA"
+    name = "NOVA"
     for index, person in enumerate(sorted_bkd_list):
         new_name = person['header'].columns[0]
         if name.lower() != new_name.lower():
