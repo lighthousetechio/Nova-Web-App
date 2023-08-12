@@ -69,7 +69,7 @@ def check_shift_overlap(df, name):
         for index in range(len(df_indiv)-1):
             if (df_indiv.iloc[index].CODT - df_indiv.iloc[index+1].CIDT).total_seconds() > 60: #considered overlap if overlapping time is greater than 1 minute.
                 problem_date = df_indiv.iloc[index+1]['Check-In Date']
-                err_string = err_string + (f'Overlapping shifts detected for {name} on {problem_date} for Shift type {df_indiv.iloc[index].Shift} and {df_indiv.iloc[index+1].Shift}\n')
+                err_string = err_string + (f'Overlapping shifts detected for {name} on {problem_date} for Shift type {df_indiv.iloc[index].Shift} and {df_indiv.iloc[index+1].Shift}. <br>')
     return err_string
 
 def approved_holiday(years):
@@ -230,7 +230,7 @@ def read_shift_record(shift_record_path):
             df = df[['Service 1 Description (Code)','Service Provider','Check-In Date','Check-In Time','Check-Out Date',
                      'Check-Out Time','Staff Worked Duration (Minutes)']]
         except:
-            raise ValueError("""The shift record does not contain all columns needed. It needs to at least contain 'Service 1 Description (Code)','Service Provider','Check-In Date','Check-In Time','Check-Out Date','Check-Out Time','Staff Worked Duration (Minutes)'.""")
+            raise ValueError("The shift record does not contain all columns needed. It needs to at least contain 'Service 1 Description (Code)','Service Provider','Check-In Date','Check-In Time','Check-Out Date','Check-Out Time','Staff Worked Duration (Minutes)'.")
         pre_cleaned = True
     #missing value check
     for col in ['Service 1 Description (Code)','Service Provider','Check-In Date','Check-In Time','Check-Out Date','Check-Out Time'
