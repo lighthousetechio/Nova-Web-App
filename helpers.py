@@ -664,6 +664,7 @@ def non_manager_payroll(non_mgr, df_shift_merged, accrued_hrs, bonus_df, bonus, 
                                                                 'Vac. Taken YTD': accrued_df['YTD Vacation Taken'].iloc[0], 
                                                                 'Vac. Accrued This Period': pay_period_accrued_vac,
                                                                 'Vac. Taken This Period': pay_period_vac_time,
+                                                                'Vac. Hrs Carried Over': accrued_df['Vac. Hrs Carried Over'].iloc[0],
                                                                 'Vac. Balance': accrued_df['Vacation Balance'].iloc[0]},index=[0]).round(decimals=2),
                                     'accrued_C': pd.DataFrame({'Sick Bank YTD': accrued_df['Sick Bank'].iloc[0], 
                                                                 'Sick Taken YTD': accrued_df['Sick Taken'].iloc[0], 
@@ -787,6 +788,7 @@ def manager_payroll(mgr, manager_rates, df_shift_merged, accrued_hrs, bonus_df, 
                                                         'Vac. Taken YTD': accrued_df['YTD Vacation Taken'].iloc[0], 
                                                         'Vac. Accrued This Period': pay_period_accrued_vac,
                                                         'Vac. Taken This Period': pay_period_vac_time,
+                                                        'Vac. Hrs Carried Over': accrued_df['Vac. Hrs Carried Over'].iloc[0],
                                                         'Vac. Balance': accrued_df['Vacation Balance'].iloc[0]},index=[0]).round(decimals=2),
                             'accrued_C': pd.DataFrame({'Sick Bank YTD': accrued_df['Sick Bank'].iloc[0], 
                                                         'Sick Taken YTD': accrued_df['Sick Taken'].iloc[0], 
@@ -1275,6 +1277,9 @@ def generate_invoice(df_shift_merged, manager_rates, non_manager_rates, staff_in
             # add col 6 info
             shift_info.append(round(RBT_hours, 2))
             BST_SARC = shift_info[0] - shift_info[3]
+            if abs(BST_SARC) <= 0.01:
+                BST_SARC = 0
+                shift_info[3] = shift_info[0]
             # add col 7 info
             shift_info.append(round(BST_SARC, 2))
             # update col 9 info
@@ -1284,6 +1289,9 @@ def generate_invoice(df_shift_merged, manager_rates, non_manager_rates, staff_in
             shift_info = output[shift]
             shift_info.append(round(BCBA_BlueShield_hrs, 2))
             BCBA_SARC = shift_info[0] - shift_info[3]
+            if abs(BCBA_SARC) <= 0.01:
+                BCBA_SARC = 0
+                shift_info[3] = shift_info[0]
             shift_info.append(round(BCBA_SARC, 2))
             shift_info[2] = round(shift_info[4] * shift_info[1], 2)
             output[shift] = shift_info
