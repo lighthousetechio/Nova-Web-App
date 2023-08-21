@@ -205,6 +205,7 @@ def split_by_work_week(df):
         week_dataframes[week_start.strftime('%Y-%m-%d')] = week_df 
     df.reset_index(inplace=True) 
     return week_dataframes 
+
 def read_shift_record(shift_record_path):
     '''
     Read in shift records, check for errors, and return cleaned dataset along with other relevant info.
@@ -550,7 +551,19 @@ def crop_shifts(df, start_date, end_date):
 
 def non_manager_payroll(non_mgr, df_shift_merged, accrued_hrs, bonus_df, bonus, time_off, staff_info, week_order, prepaid_last_time, PAY_PERIOD, new_accrued_hrs):   
     '''
-    Process payroll for non-managers
+    Process payroll for non-managers and return the result with accrued hours
+
+    non_mgr -- list of non-managers
+    df_shift_merged -- shift dataframe for the pay period
+    accrued_hrs -- accrued hours (existing for manipulation)
+    bonus_df -- bonus info as dataframe
+    bonus -- bonus summarized by person
+    staff_info -- pay rates for staff
+    time_off -- time taken off
+    week_order -- order of weeks within the pay period
+    prepaid_last_time -- list of shifts prepaid last time
+    PAY_PERIOD -- a string of pay period
+    new_accrued_hrs -- new accrual dataframe
     '''
     #Create a list that stores the payroll dictionary
     non_mgr_payroll = []
@@ -675,7 +688,20 @@ def non_manager_payroll(non_mgr, df_shift_merged, accrued_hrs, bonus_df, bonus, 
 
 def manager_payroll(mgr, manager_rates, df_shift_merged, accrued_hrs, bonus_df, bonus, time_off, week_order, prepaid_last_time, PAY_PERIOD, PREPAY, new_accrued_hrs):
     '''
-    Process payroll for managers
+    Process payroll for managers and return manager payroll and acrrued hours.
+
+    mgr -- list of managers
+    manager_rates -- rates of managers
+    df_shift_merged -- shift dataframe for the pay period
+    accrued_hrs -- accrued hours (existing for manipulation)
+    bonus_df -- bonus info as dataframe
+    bonus -- bonus summarized by person
+    time_off -- time taken off
+    week_order -- order of weeks within the pay period
+    prepaid_last_time -- list of shifts prepaid last time
+    PAY_PERIOD -- a string of pay period
+    PREPAY -- boolean, if we are prepaying in this period
+    new_accrued_hrs -- new accrual dataframe
     '''
     mgr_payroll = []
     df_shift_merged = deepcopy(df_shift_merged)
@@ -799,7 +825,7 @@ def manager_payroll(mgr, manager_rates, df_shift_merged, accrued_hrs, bonus_df, 
 
 def non_manager_weekly_breakdown(non_mgr, df_shift_merged, prepaid_last_time, week_order):  
     '''
-    Weekly breakdown for non-managers
+    Generate weekly breakdown for non-managers
     ''' 
     #Create a list that stores the payroll dictionary
     non_mgr_payroll = []
@@ -877,7 +903,7 @@ def non_manager_weekly_breakdown(non_mgr, df_shift_merged, prepaid_last_time, we
 
 def manager_weekly_breakdown(mgr, manager_rates, df_shift_merged, week_order, prepaid_last_time, PAY_PERIOD, PREPAY):
     '''
-    Weekly breakdown for managers
+    Generate the weekly breakdown for managers
     '''
     mgr_payroll = []
     df_shift_merged = deepcopy(df_shift_merged)
@@ -988,7 +1014,14 @@ def manager_weekly_breakdown(mgr, manager_rates, df_shift_merged, week_order, pr
 def generate_payroll(df_shift_merged, accrued_hrs, bonus_df, bonus, time_off, manager_rates, staff_info, prepaid_last_time, 
                      PAY_PERIOD, week_order, PREPAY):
     '''
-    Generate payroll files.
+    Generate payroll files for human readers. This is a wrapper for four methods:
+    
+    non_manager_payroll()
+    manager_payroll()
+    non_manager_weekly_breakdown()
+    manager_weekly_breakdown()
+
+    Return results from the four methods
     '''
     staff_names = set(staff_info['Name'].unique()).union(set(manager_rates['Name'].unique()))
     manager_status = [is_manager(i,manager_rates) for i in staff_names]
@@ -1018,7 +1051,7 @@ def generate_payroll(df_shift_merged, accrued_hrs, bonus_df, bonus, time_off, ma
 
 def output_payroll_files(save_path, df_shift_merged, staff_info, non_mgr_pr, mgr_pr, non_mgr_bkd, mgr_bkd, new_accrued_hrs, original_bonus_df, time_off_as_shifts, non_manager_rates, manager_rates, prepaid_hours, df_after_pay_period, PAY_PERIOD):
     '''
-    Output payroll files.
+    Output payroll files and save to an excel.
     '''
     df_shift_merged['Holiday Worked Duration (Hours)'] = (df_shift_merged['Holiday Worked Duration (Minutes)']/60).round(2)
     df_shift_merged['Hrs. Worked'] = df_shift_merged['Min. Worked']/60
@@ -1145,7 +1178,9 @@ def output_payroll_files(save_path, df_shift_merged, staff_info, non_mgr_pr, mgr
     workbook.save(new_tracker_path)
 
 def generate_invoice(df_shift_merged, manager_rates, non_manager_rates, staff_info, non_mgr_pr, mgr_pr):
-    #Invoice
+    '''
+    Genrate the Invoice using payroll files and save as an excel
+    '''
     # bill_rates: map name of shift to the billing rate
     # other_shifts: list of non-billable shifts
     # shift_list: list of all shifts, both billable and non-billable
@@ -1720,4 +1755,33 @@ def output_invoice(save_path, shift_list, output, mgr_benefits, df_benefits, tot
 
     wb.save(save_path)
     wb.close()
+
+def output_underlying(mgr_pr, non_mgr_pr, save_path, PAY_PERIOD):
+    '''
+    Output the underlying payroll information as a square dataset in csv format
+    
+    mgr_pr -- manager's payroll dictionary 
+    non_mgr_pr -- non-managers's payroll dictionary
+    '''
+    #the underlying payroll information
+    noumenon = pd.DataFrame(columns=['Pay Period','Name', 'Total Gross Wage', 'Shift', 'Min. Worked', 'Hrs. Worked', 'Wage', 'Gross Wages', 
+                                    'Hrs. YTD', 'Hrs. Worked This Period','Hire Date', 'Calendar Days Since Hire Date', 
+                                    'Vac. Accrued YTD','Vac. Taken YTD', 'Vac. Accrued This Period', 'Vac. Taken This Period',
+                                    'Vac. Balance', 'Sick Bank YTD', 'Sick Taken YTD','Sick Taken This Period', 'Sick Balance'])
+    #flatten in a loop
+    for pack in [*mgr_pr, *non_mgr_pr]:
+        payroll = pack['payroll']
+        if len(payroll) == 0:
+            continue
+        summary =  pd.concat([pack['summary']] * len(payroll), ignore_index=True)
+        acc_A = pd.concat([pack['accrued_A']] * len(payroll), ignore_index=True)
+        acc_B = pd.concat([pack['accrued_B']] * len(payroll), ignore_index=True)
+        acc_C = pd.concat([pack['accrued_C']] * len(payroll), ignore_index=True)
+        flattened = pd.concat([payroll, summary, acc_A, acc_B, acc_C], axis=1)
+        noumenon = pd.concat([noumenon, flattened], axis=0, ignore_index=True)
+    #drop manager-only info
+    noumenon = noumenon.drop(['Total Hours Worked'], axis=1)
+    #save file
+    noumenon.to_csv(save_path+"/"+f"PAYROLL_FOR_MACHINE - {PAY_PERIOD}.csv", index=False)
+
 #end of helper

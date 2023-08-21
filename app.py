@@ -93,6 +93,9 @@ def process_files():
         
         #output invoice file
         output_invoice(save_path, shift_list, output, mgr_benefits, df_benefits, total_mgr, df_shift_merged, PAY_PERIOD)
+        
+        #output machine_readable payroll
+        output_underlying(mgr_pr, non_mgr_pr, save_path, PAY_PERIOD)
 
         #flag success
         return "Files Processed Successfully!"
