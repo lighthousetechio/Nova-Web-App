@@ -4,11 +4,14 @@
 
 Inputs: shift record (.xlsx) from Therap and old tracker (.xlsx) maintained by the managers.
 
-Outputs: a payroll output, a new tracker, and an invoice (all .xlsx).
+Outputs:
+
+A. Full Cycle: a payroll output, a new tracker, an invoice (all .xlsx), and a payroll for machine (.csv).
+
+B. Off Cycle: a payroll output (.xlsx) for selected staff.
 
 Please follow the instructions on the webpage. 
-Messages and warnings are displayed on a new page. 
-Click the back button on your browser to return to the main page. 
+Messages and warnings are displayed as alerts. 
 The app saves your progress automatically.
 To clear all files uploaded or generated, click "refresh" at the bottom.
 
