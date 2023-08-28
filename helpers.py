@@ -45,6 +45,26 @@ def delete_files_in_folder(folder_path):
     except Exception as e:
         return False, str(e)  # Error occurred
 
+def get_name_list(shift_record_path, old_tracker_path):
+    '''
+    Get a list of names from shift record
+    '''
+    try:
+        df = pd.read_excel(shift_record_path)
+        df = df[['Service Provider']]
+        df['Name'] = df['Service Provider'].str.split(' /', n=1).str[0]
+        df[['Last Name', 'First Name']] = df['Name'].str.split(', ', expand=True)
+        # concatenate First name and Last Name columns in the desired order
+        df['Name'] = df['First Name'] + ' ' + df['Last Name']
+        name_set = set(df['Name'].unique())
+        manager_rates = pd.read_excel(old_tracker_path, sheet_name="MANAGER INFO")
+        manager_set = set(manager_rates['Name'].unique())
+        name_set = name_set - manager_set
+        name_list = sorted(list(name_set))
+        return name_list
+    except: 
+        return [] 
+
 def check_shift_overlap(df, name):
     '''
     Check overlapping shifts for the same person.
@@ -69,7 +89,7 @@ def check_shift_overlap(df, name):
         for index in range(len(df_indiv)-1):
             if (df_indiv.iloc[index].CODT - df_indiv.iloc[index+1].CIDT).total_seconds() > 60: #considered overlap if overlapping time is greater than 1 minute.
                 problem_date = df_indiv.iloc[index+1]['Check-In Date']
-                err_string = err_string + (f'Overlapping shifts detected for {name} on {problem_date} for Shift type {df_indiv.iloc[index].Shift} and {df_indiv.iloc[index+1].Shift}. <br>')
+                err_string = err_string + (f'Overlapping shifts detected for {name} on {problem_date} for Shift type {df_indiv.iloc[index].Shift} and {df_indiv.iloc[index+1].Shift}.    ')
     return err_string
 
 def approved_holiday(years):
@@ -321,6 +341,115 @@ def read_shift_record(shift_record_path):
     calc_worked_holiday(df)
     return (df, PAY_PERIOD, start_date, end_date)
 
+def read_one_person_record(shift_record_path, selected_name):
+    #read dataset from path
+    try:
+        df = pd.read_excel(shift_record_path)
+    except:
+        raise FileNotFoundError("Cannot open the shift record file. Make sure it's an .XLSX file.")
+    # indicating whether the data has been pre-processed
+    pre_cleaned = False
+    #subsetting useful columns
+    try: #raw dataset
+        df = df[['Service 1 Description (Code)','Service Provider','Check-In Date','Check-In Time',
+                 'Updated Check-In Date','Updated Check-In Time','Check-Out Date','Check-Out Time','Updated Check-Out Date',
+                'Updated Check-Out Time','Staff Worked Duration','Staff Worked Duration (Minutes)']]
+    except:
+        try: # cleaned dataset
+            df = df[['Service 1 Description (Code)','Service Provider','Check-In Date','Check-In Time','Check-Out Date',
+                     'Check-Out Time','Staff Worked Duration (Minutes)']]
+        except:
+            raise ValueError("The shift record does not contain all columns needed. It needs to at least contain 'Service 1 Description (Code)','Service Provider','Check-In Date','Check-In Time','Check-Out Date','Check-Out Time','Staff Worked Duration (Minutes)'.")
+        pre_cleaned = True
+    #clean name and keep only relevant name
+    df['Name'] = df['Service Provider'].str.split(' /', n=1).str[0]
+    df[['Last Name', 'First Name']] = df['Name'].str.split(', ', expand=True)
+    # concatenate First name and Last Name columns in the desired order
+    df['Name'] = df['First Name'] + ' ' + df['Last Name']
+    df = df.loc[df['Name'] == selected_name]
+    #missing value check
+    for col in ['Service 1 Description (Code)','Service Provider','Check-In Date','Check-In Time','Check-Out Date','Check-Out Time'
+                ,'Staff Worked Duration (Minutes)']:
+        if len(df.loc[df[col].isnull()]) != 0:
+            raise ValueError(f"Some shifts have missing {col}.")
+    #clean shift code
+    df['Shift'] = df['Service 1 Description (Code)'].str.replace(r'\(.*\)', '')
+    # Remove prefix if it exists
+    prefix = 'RC-SDP-CLS-320 '
+    df['Shift'] = df['Shift'].apply(lambda x: x[len(prefix):] if x.startswith(prefix) else x)
+    df['Shift'] = df['Shift'].apply(lambda x: x.rstrip())
+    # drop First name and Last Name columns
+    df = df.drop(["Service 1 Description (Code)", "Service Provider"], axis=1)
+    # Replace Date/Time with Updated Date/Time if the latter is not NaN
+    try:
+        df['Check-In Date'] = df['Updated Check-In Date'].fillna(df['Check-In Date'])
+        df['Check-In Time'] = df['Updated Check-In Time'].fillna(df['Check-In Time'])
+        df['Check-Out Date'] = df['Updated Check-Out Date'].fillna(df['Check-Out Date'])
+        df['Check-Out Time'] = df['Updated Check-Out Time'].fillna(df['Check-Out Time'])
+        # drop unnecessary columns once the info is integrated.
+        df.drop(['Updated Check-In Date', 'Updated Check-In Time','Updated Check-Out Date', 
+                 'Updated Check-Out Time'], axis=1, inplace=True)
+    except:
+        if pre_cleaned == False:
+            raise RuntimeError("Cannot update check-in/out date/times using updated check-in/out dates/times.")
+    #Convert date and time to python-style datetime format
+    try:
+        CIDT = df['Check-In Date'].str.cat(df['Check-In Time'], sep=' ')
+        CODT = df['Check-Out Date'].str.cat(df['Check-Out Time'], sep=' ')
+        CIDT = CIDT.apply(lambda x: datetime.datetime.strptime(x, r'%m/%d/%Y %I:%M %p'))
+        CODT = CODT.apply(lambda x: datetime.datetime.strptime(x, r'%m/%d/%Y %I:%M %p'))
+        PAY_PERIOD = str(CIDT.min().date()) + ' - ' + str(CIDT.max().date())
+        start_date, end_date = PAY_PERIOD.split(' - ')
+        start_date = datetime.datetime.strptime(start_date, '%Y-%m-%d')
+        end_date = datetime.datetime.strptime(end_date, '%Y-%m-%d')
+        end_date = end_date + datetime.timedelta(days=1)
+        # add python-format datetime to the dataframe
+        df['CIDT'] = CIDT
+        df['CODT'] = CODT
+    except:
+        raise RuntimeError("Cannot convert date and time to Python's own format.")
+    # Check for overlapping shifts
+    err_string = ""
+    for name in df.Name.unique():
+        err_string = err_string + check_shift_overlap(df, name)
+    if err_string != "":
+        raise ValueError(err_string)
+    # Split shifts that span two days
+    new_rows = []
+    # loop through each row of the original dataframe
+    for index, row in df.iterrows():
+        # check if CIDT is on the same date as CODT
+        if row['CIDT'].weekday() != row['CODT'].weekday():
+            # create a new row for the portion of the shift that occurred on Sunday
+            first_day_row = row.copy()
+            first_day_row['CODT'] = pd.to_datetime(str(row['CODT'].date()) + ' 00:00:00')
+            new_rows.append(first_day_row)
+            # create a new row for the portion of the shift that occurred on Monday
+            second_day_row = row.copy()
+            second_day_row['CIDT'] = pd.to_datetime(str(row['CODT'].date()) + ' 00:00:00')
+            new_rows.append(second_day_row)
+        else:
+            new_rows.append(row)
+    # create a new dataframe from the modified rows
+    new_df = pd.DataFrame(new_rows)
+    # sort the new dataframe by CIDT
+    new_df = new_df.sort_values(by=['CIDT'])
+    # reset the index of the new dataframe
+    new_df = new_df.reset_index(drop=True)
+    new_df['Check-In Date'] = new_df['CIDT'].apply(lambda x: x.strftime('%m/%d/%Y'))
+    new_df['Check-In Time'] = new_df['CIDT'].apply(lambda x: x.strftime('%I:%M %p'))
+    new_df['Check-Out Date'] = new_df['CODT'].apply(lambda x: x.strftime('%m/%d/%Y'))
+    new_df['Check-Out Time'] = new_df['CODT'].apply(lambda x: x.strftime('%I:%M %p'))
+    new_df['Min. Worked'] = ((new_df['CODT'] - new_df['CIDT']).dt.total_seconds() / 60).round(2)
+    df = new_df
+    df['Shift_original'] = df['Shift']
+    #filters out shifts of type "Adaptive Behavior Treatment" since Nova doesn't pay for those
+    #df = df.loc[~df['Shift'].str.contains('Adaptive Behavior Treatment')]
+    df['Shift'] = df['Shift'].replace({'Training-HSS': 'HSS1', 'Training-RBT': 'BST1'})
+    #calculate holiday hours
+    calc_worked_holiday(df)
+    return (df, PAY_PERIOD, start_date, end_date)
+
 def read_old_tracker(old_tracker_path, start_date):
     '''
     Read the old tracker and check for errors
@@ -462,20 +591,20 @@ def merge_shifts(df, staff_info, manager_rates, non_manager_rates):
     # Filter the rows in other_rates where the NAME column matches the names of the Service Providers in the Admin shifts
     admin_rates = staff_info[staff_info['Name'].isin(admin_names)]
     # Merge the Admin rates back into the Admin shifts dataframe
-    admin_shifts_merged = pd.merge(admin_shifts, admin_rates, on='Name', how='left')
-    # Fill the Regular Hourly Wage and Overtime Hourly Wage columns with the values from the ADMIN/VACAY WAGE column
-    admin_shifts_merged.loc[:, 'Regular Hourly Wage'] = admin_shifts_merged['Admin/Sick/Vacay Wage']
-    admin_shifts_merged.loc[:, 'BOT Hourly Wage'] = admin_shifts_merged['Admin/Sick/Vacay Wage']
-    admin_shifts_merged.loc[:, 'Accrual Rate'] = 0.04
-    df_shift_merged = df_shift_merged[df_shift_merged['Shift'] != 'Admin']
-    #Merge
-    df_shift_merged = pd.concat([df_shift_merged, admin_shifts_merged], ignore_index=True)
-    columns_to_remove = [col for col in df_shift_merged.columns if col.startswith("# ")] + ['Billing Rates', 'Accrual Rate_x', 
-                                                                                            'Hire Date', 'BST Level', 'HSS Level', 
-                                                                                            'OA Level', 'Accrual Rate_y',
-                                                                                            'Days Elapsed Since Hire Date', 'Admin/Sick/Vacay Wage', 
-                                                                                            'Staff Worked Duration (Minutes)']
-    df_shift_merged = df_shift_merged.drop(columns=columns_to_remove)
+    if len(admin_names)>0:
+        admin_shifts_merged = pd.merge(admin_shifts, admin_rates, on='Name', how='left')
+        # Fill the Regular Hourly Wage and Overtime Hourly Wage columns with the values from the ADMIN/VACAY WAGE column
+        admin_shifts_merged.loc[:, 'Regular Hourly Wage'] = admin_shifts_merged['Admin/Sick/Vacay Wage']
+        admin_shifts_merged.loc[:, 'BOT Hourly Wage'] = admin_shifts_merged['Admin/Sick/Vacay Wage']
+        admin_shifts_merged.loc[:, 'Accrual Rate'] = 0.04
+        df_shift_merged = df_shift_merged[df_shift_merged['Shift'] != 'Admin']
+        df_shift_merged = pd.concat([df_shift_merged, admin_shifts_merged], ignore_index=True)
+        columns_to_remove = [col for col in df_shift_merged.columns if col.startswith("# ")] + ['Billing Rates', 'Accrual Rate_x', 
+                                                                                                'Hire Date', 'BST Level', 'HSS Level', 
+                                                                                                'OA Level', 'Accrual Rate_y',
+                                                                                                'Days Elapsed Since Hire Date', 'Admin/Sick/Vacay Wage', 
+                                                                                                'Staff Worked Duration (Minutes)']
+        df_shift_merged = df_shift_merged.drop(columns=columns_to_remove)
     return df_shift_merged
 
 def calc_time_off(df_shift_merged):
@@ -538,7 +667,7 @@ def crop_shifts(df, start_date, end_date):
     # Sort the rows by the values in the "week" column
     week_df = week_df.sort_values('week_dt')
     # Drop the first week from week_df if it's not a full week
-    if not week_df.iloc[0]['full week']:
+    if (not week_df.iloc[0]['full week']) and (len(week_dataframes) > 1) :
         # Get the key corresponding to the first row's "week" value
         key_to_drop = week_df.iloc[0]['week']
         # Drop the item with the corresponding key from week_dataframes
@@ -1040,13 +1169,19 @@ def generate_payroll(df_shift_merged, accrued_hrs, bonus_df, bonus, time_off, ma
     time_off = time_off.round(2)
     staff_info = staff_info.round(2)
     prepaid_last_time = prepaid_last_time.round(2)
-
-    non_mgr_pr, new_accrued_hrs = non_manager_payroll(non_mgr, df_shift_merged, accrued_hrs, bonus_df, bonus, time_off, staff_info,
-                                                       week_order, prepaid_last_time, PAY_PERIOD, new_accrued_hrs)
-    mgr_pr, new_accrued_hrs = manager_payroll(mgr, manager_rates, df_shift_merged, accrued_hrs, bonus_df, bonus, time_off, week_order, 
+    non_mgr_pr = {}
+    mgr_pr = {}
+    non_mgr_bkd = {}
+    mgr_bkd = {}
+    if any(is_manager(name, manager_rates) == False for name in df_shift_merged.Name.unique()):
+        non_mgr_pr, new_accrued_hrs = non_manager_payroll(non_mgr, df_shift_merged, accrued_hrs, bonus_df, bonus, time_off, staff_info,
+                                                        week_order, prepaid_last_time, PAY_PERIOD, new_accrued_hrs)
+        non_mgr_bkd = non_manager_weekly_breakdown(non_mgr, df_shift_merged, prepaid_last_time, week_order)
+    if any(is_manager(name, manager_rates) for name in df_shift_merged.Name.unique()):
+        mgr_pr, new_accrued_hrs = manager_payroll(mgr, manager_rates, df_shift_merged, accrued_hrs, bonus_df, bonus, time_off, week_order, 
                                               prepaid_last_time, PAY_PERIOD, PREPAY, new_accrued_hrs)
-    non_mgr_bkd = non_manager_weekly_breakdown(non_mgr, df_shift_merged, prepaid_last_time, week_order)
-    mgr_bkd = manager_weekly_breakdown(mgr, manager_rates, df_shift_merged, week_order, prepaid_last_time, PAY_PERIOD, PREPAY)
+        mgr_bkd = manager_weekly_breakdown(mgr, manager_rates, df_shift_merged, week_order, prepaid_last_time, PAY_PERIOD, PREPAY)
+
     return (non_mgr_pr, mgr_pr, non_mgr_bkd, mgr_bkd, new_accrued_hrs)
 
 def output_payroll_files(save_path, df_shift_merged, staff_info, non_mgr_pr, mgr_pr, non_mgr_bkd, mgr_bkd, new_accrued_hrs, original_bonus_df, time_off_as_shifts, non_manager_rates, manager_rates, prepaid_hours, df_after_pay_period, PAY_PERIOD):
@@ -1176,6 +1311,57 @@ def output_payroll_files(save_path, df_shift_merged, staff_info, non_mgr_pr, mgr
 
     # Save the modified Excel file
     workbook.save(new_tracker_path)
+
+def output_payroll_for_one(selected_name, save_path, df_shift_merged, non_mgr_pr, mgr_pr, non_mgr_bkd, mgr_bkd, time_off_as_shifts, PAY_PERIOD):
+    '''
+    Output payroll for just one person.
+    '''
+    df_shift_merged['Holiday Worked Duration (Hours)'] = (df_shift_merged['Holiday Worked Duration (Minutes)']/60).round(2)
+    df_shift_merged['Hrs. Worked'] = df_shift_merged['Min. Worked']/60
+    df_shift_merged = df_shift_merged.round(decimals=2)
+    df_shift_merged['Day of the Week'] = df_shift_merged['CIDT'].dt.day_name()
+    df_shift_merged = df_shift_merged[['Name', 'First Name', 'Last Name', 'Shift_original', 'Shift','Day of the Week', 'Check-In Date', 'Check-In Time', 
+                                    'Check-Out Date', 'Check-Out Time', 'Min. Worked', 'Hrs. Worked',  'Regular Hourly Wage', 'BOT Hourly Wage', 'Accrual Rate',
+                                    'Error Check', 'CIDT', 'CODT','Holiday Worked Duration (Minutes)','Holiday Worked Duration (Hours)']]
+    df_shift_merged = df_shift_merged.reindex(columns=['Name', 'First Name', 'Last Name', 'Shift_original', 'Shift','Day of the Week', 'Check-In Date', 
+                                                    'Check-In Time', 'Check-Out Date', 'Check-Out Time', 'Min. Worked', 'Hrs. Worked',  'Regular Hourly Wage', 
+                                                    'BOT Hourly Wage', 'Accrual Rate','Error Check', 'CIDT', 'CODT','Holiday Worked Duration (Minutes)',
+                                                    'Holiday Worked Duration (Hours)'])
+    payroll_list = [ *non_mgr_pr, *mgr_pr ]
+    bkd_list = [ *non_mgr_bkd, *mgr_bkd ]
+    sorted_bkd_list = sorted(bkd_list, key=lambda x: x['header'].columns[0].split()[-1])
+    #Output payroll
+    payroll_path = save_path+"/"+f"OFF CYCLE PAYROLL OUTPUT - {selected_name} - {PAY_PERIOD}.xlsx"
+    writer = pd.ExcelWriter(payroll_path) 
+    startrow = 0
+    person  = [i for i in payroll_list if list(i['header'])[0] == selected_name][0]
+    for df in [person['header'], person['payroll'],person['summary'], person['accrued_A'],person['accrued_B'],person['accrued_C']]:
+        df.to_excel(writer, engine="xlsxwriter",sheet_name='FINAL PAYROLL', startrow=startrow, index=False)
+        startrow += (df.shape[0] + 1)
+    writer.sheets['FINAL PAYROLL'].set_column('A:F', 24)
+    startrow = 0
+    name = "NOVA"
+    for index, person in enumerate(sorted_bkd_list):
+        new_name = person['header'].columns[0]
+        if name.lower() != new_name.lower():
+            if startrow!=0:
+                startrow += 3
+            person['header'].columns=person['header'].columns.str.upper()
+        name = person['header'].columns[0]
+        last_name = sorted_bkd_list[-1]
+        for df in [person['header'], person['payroll'], person['summary']]:
+            df.to_excel(writer, engine="xlsxwriter",sheet_name='WEEKLY BREAKDOWNS', startrow=startrow, index=False)
+            startrow += (df.shape[0] + 1)
+        startrow += 2
+    writer.sheets['WEEKLY BREAKDOWNS'].set_column('A:H', 40)
+    df_shift_merged = pd.concat([df_shift_merged, time_off_as_shifts], ignore_index=True)
+    df_shift_merged = df_shift_merged.sort_values(by=['Last Name', 'CIDT'])
+    df_shift_merged.to_excel(writer, sheet_name="SHIFT BREAKDOWNS", index=False)
+    for column in df_shift_merged:
+        column_length = max(df_shift_merged[column].astype(str).map(len).max(), len(column))
+        col_idx =df_shift_merged.columns.get_loc(column)
+        writer.sheets['SHIFT BREAKDOWNS'].set_column(col_idx, col_idx, column_length)
+    writer.save()
 
 def generate_invoice(df_shift_merged, manager_rates, non_manager_rates, staff_info, non_mgr_pr, mgr_pr):
     '''

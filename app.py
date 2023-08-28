@@ -5,8 +5,9 @@ This file implements the frontend of the payroll-processing web app.
 '''
 #import pacakges
 import os
-from flask import Flask, render_template, request, send_file, redirect
+from flask import Flask, render_template, request, send_file, redirect, jsonify
 from helpers import *
+import time
 
 #initialize app
 app = Flask(__name__)
@@ -26,7 +27,9 @@ def allowed_file(filename):
 # render index.html
 @app.route('/')
 def index():
-    return render_template('index.html')
+    shift_record_present = os.path.exists(os.path.join(app.config['SHIFT_RECORD_FOLDER'], 'shift_record.xlsx'))
+    old_tracker_present = os.path.exists(os.path.join(app.config['OLD_TRACKER_FOLDER'], 'old_tracker.xlsx'))
+    return render_template('index.html', shift_record_present=shift_record_present, old_tracker_present=old_tracker_present, names=[])
 
 #upload shift record
 @app.route('/shift_record', methods=['POST'])
@@ -54,72 +57,86 @@ def upload_tracker():
     # Handle invalid file or file type
     return "Invalid file or file type."
 
-#process file
-@app.route('/process', methods=['POST'])
-def process_files():
+#process file for the whole cycle
+@app.route('/process_cycle', methods=['POST'])
+def process_cycle():
     # Implement file processing logic here
     try:
         #folder paths
         shift_record_path = './shift_record/shift_record.xlsx'
         tracker_path = './old_tracker/old_tracker.xlsx'
         save_path = './processed_files'
-
+        #remove old files
+        delete_files_in_folder("./processed_files")
         #read shift record and check for errors
         df, PAY_PERIOD, start_date, end_date = read_shift_record(shift_record_path)
-
         #read old tracker adn check for errors
         manager_rates, non_manager_rates, accrued_hrs, bonus_df, bonus, original_bonus_df, staff_info, prepaid_last_time, unpaid_last_time = read_old_tracker(tracker_path, start_date)
-        
         #merge shift record with pay rates from the tracker
         df_shift_merged = merge_shifts(df, staff_info, manager_rates, non_manager_rates)
-
         #calculate vacation and sick times
         df_shift_merged, time_off, time_off_as_shifts = calc_time_off(df_shift_merged)
-
         #merge overight shifts unpaid last time with df_shift_merged
         df_shift_merged = pd.concat([unpaid_last_time, df_shift_merged], ignore_index=True)
-
         #crop the shift record based on pay cycle
         df_shift_merged, df_after_pay_period, prepaid_hours, week_order, PREPAY = crop_shifts(df_shift_merged, start_date, end_date)
-
         #generate payroll outputs
         non_mgr_pr, mgr_pr, non_mgr_bkd, mgr_bkd, new_accrued_hrs = generate_payroll(df_shift_merged, accrued_hrs, bonus_df, bonus, time_off, manager_rates, staff_info, prepaid_last_time, PAY_PERIOD, week_order, PREPAY)
-        
         #output payroll files
         output_payroll_files(save_path, df_shift_merged, staff_info, non_mgr_pr, mgr_pr, non_mgr_bkd, mgr_bkd, new_accrued_hrs, original_bonus_df, time_off_as_shifts, non_manager_rates, manager_rates, prepaid_hours, df_after_pay_period, PAY_PERIOD)
-        
         #generate invoice outputs
         shift_list, output, mgr_benefits, df_benefits, total_mgr = generate_invoice(df_shift_merged, manager_rates, non_manager_rates, staff_info, non_mgr_pr, mgr_pr)
-        
         #output invoice file
         output_invoice(save_path, shift_list, output, mgr_benefits, df_benefits, total_mgr, df_shift_merged, PAY_PERIOD)
-        
         #output machine_readable payroll
         output_underlying(mgr_pr, non_mgr_pr, save_path, PAY_PERIOD)
-
+       
+        file_names = [f for f in os.listdir(save_path) if os.path.isfile(os.path.join(save_path, f))]
         #flag success
-        return "Files Processed Successfully!"
+        return jsonify({"status": "success", "message": "Files Processed Successfully!", "files": file_names})
     except Exception as e:
         # display error
-        return str(e)
-    
-#save files
-@app.route('/save', methods=['POST'])
+        return jsonify({"status": "error", "message": str(e)})
+
+
+@app.route('/process_one', methods=['POST'])
+def process_one():
+    shift_record_path = './shift_record/shift_record.xlsx'
+    tracker_path = './old_tracker/old_tracker.xlsx'
+    save_path = './processed_files'
+    selected_name = request.form.get('name_dropdown')
+    try:
+        if selected_name:
+                delete_files_in_folder("./processed_files")
+                df, PAY_PERIOD, start_date, end_date = read_one_person_record(shift_record_path, selected_name)
+                #read old tracker adn check for errors
+                manager_rates, non_manager_rates, accrued_hrs, bonus_df, bonus, original_bonus_df, staff_info, prepaid_last_time, unpaid_last_time = read_old_tracker(tracker_path, start_date)
+                #merge shift record with pay rates from the tracker
+                df_shift_merged = merge_shifts(df, staff_info, manager_rates, non_manager_rates)
+                #calculate vacation and sick times
+                df_shift_merged, time_off, time_off_as_shifts = calc_time_off(df_shift_merged)
+                #merge overight shifts unpaid last time with df_shift_merged
+                df_shift_merged = pd.concat([unpaid_last_time, df_shift_merged], ignore_index=True)
+                #crop the shift record based on pay cycle
+                df_shift_merged, df_after_pay_period, prepaid_hours, week_order, PREPAY = crop_shifts(df_shift_merged, start_date, end_date)
+                #generate payroll outputs
+                non_mgr_pr, mgr_pr, non_mgr_bkd, mgr_bkd, new_accrued_hrs = generate_payroll(df_shift_merged, accrued_hrs, bonus_df, bonus, time_off, manager_rates, staff_info, prepaid_last_time, PAY_PERIOD, week_order, PREPAY)
+                #output payroll files
+                output_payroll_for_one(selected_name, save_path, df_shift_merged, non_mgr_pr, mgr_pr, non_mgr_bkd, mgr_bkd, time_off_as_shifts, PAY_PERIOD)
+                    #output payroll files
+                file_names = [f for f in os.listdir(save_path) if os.path.isfile(os.path.join(save_path, f))]
+
+                return jsonify({"status": "success", "message": f"File Processed Successfully for {selected_name}", "files": file_names})
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)})
+
+
+@app.route('/save', methods=['GET'])
 def save_files():
     save_path = app.config['PROCESSED_FILES_FOLDER']
-    file_links = []
-    # Generate download links for each processed file
-    for root, dirs, files in os.walk(save_path):
-        for file in files:
-            file_path = os.path.join(root, file)
-            download_link = f'<a href="/download/{file}" target="_blank">{file}</a>'
-            file_links.append(download_link)
+    file_names = [file for root, dirs, files in os.walk(save_path) for file in files]
+    return jsonify({"file_names": file_names})
 
-    # Create HTML response with download links
-    download_links = "<br>".join(file_links)
-    return f"Download links:<br>{download_links}"
-
-#download files
 @app.route('/download/<filename>')
 def download_file(filename):
     # Get the path to the processed file
@@ -138,6 +155,10 @@ def refresh_page():
     referer_url = request.headers.get('Referer', '/')
     return redirect(referer_url)
 
+@app.route('/get_names', methods=['GET'])
+def get_names():
+    names = get_name_list('./shift_record/shift_record.xlsx', './old_tracker/old_tracker.xlsx')
+    return {'names': names}
 
 if __name__ == '__main__':
     app.run(debug=True)

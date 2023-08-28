@@ -21,27 +21,245 @@
 </head>
 <body>
     <h1>Nova Payroll Processor</h1>
+    
     <h3>1. Upload Shift Record</h3> 
     <form action="/shift_record" method="POST" enctype="multipart/form-data">
         <input type="file" name="shift_record">
         <button type="submit">Upload Shift Record</button>
     </form>
+    
     <h3>2. Upload Old Tracker</h3> 
     <form action="/old_tracker" method="POST" enctype="multipart/form-data">
         <input type="file" name="old_tracker">
         <button type="submit">Upload Old Tracker</button>
     </form>
-    <h3>3. Process Payroll</h3> 
-    <form action="/process" method="POST">
-        <button type="submit">Process Files</button>
-    </form>
+    
+    <h3>3. Process Payroll Files (Choose One Option Below)</h3>
+
+    <div style="display: flex; justify-content: space-between;">
+        <form action="/process_cycle" method="POST" style="flex: 1; margin-right: 30px;">
+            <button type="submit">Process A Full Pay Cycle</button>
+        </form>
+        OR
+        <form action="/process_one" method="post" style="flex: 1; margin-left: 30px; display: flex; align-items: center; justify-content: flex-end;">
+            <input type="submit" value="Process Off-Cycle" style="margin-right: 10px;">
+
+            <select name="name_dropdown">
+                <option value="">Select a Name</option>
+                {% for name in names %}
+                    <option value="{{ name }}">{{ name }}</option>
+                {% endfor %}
+            </select>
+        </form>
+    </div>
+    
     <h3>4. Save Outputs</h3> 
-    <form action="/save" method="POST">
-        <button type="submit">Save Files</button>
-    </form>
-        <h3>Start A New Session</h3> 
+    <div id="downloadLinks"></div>
+    
+    <h3>Start A New Session</h3> 
     <form action="/refresh">
         <button type="submit">Refresh</button>
     </form>
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+
+    <script>
+        function saveData() {
+            $.ajax({
+                url: '/save',
+                type: 'POST',
+                success: function(response) {
+                    let downloadDiv = $("#download-links");
+                    downloadDiv.empty();  // Clear existing links
+
+                    response.links.forEach(function(link) {
+                        let filename = link.split('/').pop();
+                        let downloadLink = $('<a>', {
+                            href: "/download/" + filename,
+                            text: filename,
+                            target: "_blank"
+                        });
+                        downloadDiv.append(downloadLink);
+                        downloadDiv.append("<br>");
+                    });
+                },
+                error: function(error) {
+                    alert("Error saving data!");
+                }
+            });
+        }
+
+
+        $(document).ready(function() {
+        $("form[action='/shift_record']").on("submit", function(e) {
+            e.preventDefault();
+            
+            var formData = new FormData(this);
+            
+            $.ajax({
+                url: '/shift_record',
+                type: 'POST',
+                data: formData,
+                success: function(response) {
+                    alert(response);  // Display the server's response as an alert
+                    
+                    // Now, fetch updated names for the dropdown
+                    $.ajax({
+                        url: '/get_names',
+                        type: 'GET',
+                        success: function(data) {
+                            var dropdown = $("select[name='name_dropdown']");
+                            dropdown.empty(); // Clear existing options
+                            dropdown.append($('<option>', {
+                                value: "",
+                                text: "Select a Name"
+                            }));
+                            
+                            data.names.forEach(function(name) {
+                                dropdown.append($('<option>', {
+                                    value: name,
+                                    text: name
+                                }));
+                            });
+                        }
+                    });
+                },
+                cache: false,
+                contentType: false,
+                processData: false
+            });
+        });
+    });
+
+        $(document).ready(function() {
+        $("form[action='/old_tracker']").on("submit", function(e) {
+            e.preventDefault();
+            
+            var formData = new FormData(this);
+            
+            $.ajax({
+                url: '/old_tracker',
+                type: 'POST',
+                data: formData,
+                success: function(response) {
+                    alert(response);  // Display the server's response as an alert
+                    
+                    // Now, fetch updated names for the dropdown
+                    $.ajax({
+                        url: '/get_names',
+                        type: 'GET',
+                        success: function(data) {
+                            var dropdown = $("select[name='name_dropdown']");
+                            dropdown.empty(); // Clear existing options
+                            dropdown.append($('<option>', {
+                                value: "",
+                                text: "Select a Name"
+                            }));
+                            
+                            data.names.forEach(function(name) {
+                                dropdown.append($('<option>', {
+                                    value: name,
+                                    text: name
+                                }));
+                            });
+                        }
+                    });
+                },
+                cache: false,
+                contentType: false,
+                processData: false
+            });
+        });
+    });
+
+        $(document).ready(function() {
+        $("form[action='/process_cycle']").on("submit", function(e) {
+            e.preventDefault();
+            
+            var formData = new FormData(this);
+            
+            $.ajax({
+                url: '/process_cycle',
+                type: 'POST',
+                data: formData,
+                success: function(response) {
+                    alert(response.message);  // Assuming the response contains a message
+
+                    let downloadDiv = $("#downloadLinks");
+                    downloadDiv.empty();  // Clear any existing links
+
+                    response.files.forEach(function(filename) {
+                        let link = $('<a>', {
+                            href: "/download/" + filename,
+                            text: filename,
+                            target: "_blank"
+                        });
+                        downloadDiv.append(link);
+                        downloadDiv.append("<br>");  // add a line break after each link
+                    });
+                    
+                    // Code to fetch names for the dropdown remains unchanged
+                    $.ajax({
+                        url: '/get_names',
+                        type: 'GET',
+                        success: function(data) {
+                            var dropdown = $("select[name='name_dropdown']");
+                            dropdown.empty(); // Clear existing options
+                            dropdown.append($('<option>', {
+                                value: "",
+                                text: "Select a Name"
+                            }));
+                            
+                            data.names.forEach(function(name) {
+                                dropdown.append($('<option>', {
+                                    value: name,
+                                    text: name
+                                }));
+                            });
+                        }
+                    });
+                },
+                cache: false,
+                contentType: false,
+                processData: false
+            });
+        });
+    });
+
+        $(document).ready(function() {
+        $("form[action='/process_one']").on("submit", function(e) {
+            e.preventDefault();
+            
+            var formData = new FormData(this);
+            
+            $.ajax({
+                url: '/process_one',
+                type: 'POST',
+                data: formData,
+                success: function(response) {
+                    alert(response.message);  // Assuming the response contains a message
+
+                    let downloadDiv = $("#downloadLinks");
+                    downloadDiv.empty();  // Clear any existing links
+
+                    response.files.forEach(function(filename) {
+                        let link = $('<a>', {
+                            href: "/download/" + filename,
+                            text: filename,
+                            target: "_blank"
+                        });
+                        downloadDiv.append(link);
+                        downloadDiv.append("<br>");  // add a line break after each link
+                    });
+                    
+                    // No need to fetch names for the dropdown here
+                },
+                cache: false,
+                contentType: false,
+                processData: false
+            });
+        });
+    });
+    </script>
+    
 </body>
 </html>
