@@ -155,10 +155,12 @@ def refresh_page():
     referer_url = request.headers.get('Referer', '/')
     return redirect(referer_url)
 
+#get the names of non-managers
 @app.route('/get_names', methods=['GET'])
 def get_names():
     names = get_name_list('./shift_record/shift_record.xlsx', './old_tracker/old_tracker.xlsx')
     return {'names': names}
 
+# main
 if __name__ == '__main__':
-    app.run(debug=True)
+    app.run()

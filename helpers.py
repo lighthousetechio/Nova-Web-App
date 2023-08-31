@@ -47,9 +47,16 @@ def delete_files_in_folder(folder_path):
 
 def get_name_list(shift_record_path, old_tracker_path):
     '''
-    Get a list of names from shift record
+    Get a list of names of non-managers from shift record
+
+    shift_record_path -- path to folder
+    old_tracker_path -- path to old tracker
+
     '''
+    # Don't do anything if there's something wrong with the uploaded files.
+    # Problem with uploaded files shoudl be flagged in other functions.
     try:
+        # get the names
         df = pd.read_excel(shift_record_path)
         df = df[['Service Provider']]
         df['Name'] = df['Service Provider'].str.split(' /', n=1).str[0]
@@ -58,6 +65,7 @@ def get_name_list(shift_record_path, old_tracker_path):
         df['Name'] = df['First Name'] + ' ' + df['Last Name']
         name_set = set(df['Name'].unique())
         manager_rates = pd.read_excel(old_tracker_path, sheet_name="MANAGER INFO")
+        # do not include managers
         manager_set = set(manager_rates['Name'].unique())
         name_set = name_set - manager_set
         name_list = sorted(list(name_set))
@@ -100,15 +108,16 @@ def approved_holiday(years):
 
     return a set of approved holiday dates.
     '''
+    # set of holidays
     approved_holiday = set()
     holiday_set = set(["Thanksgiving", "Christmas Day"])
     for year in years:
-        ah = {k for k, v in holidays.US(years=year).items() if v in holiday_set}
-        approved_holiday = approved_holiday.union(ah)
-        approved_holiday.add(easter(year))
-        approved_holiday.add(datetime.date(year, 12, 24))
-        approved_holiday.add(datetime.date(year, 12, 31))
-        approved_holiday.add(datetime.date(year-1, 12, 31))
+        holiday_ls = {k for k, v in holidays.US(years=year).items() if v in holiday_set}
+        approved_holiday = approved_holiday.union(holiday_ls)
+        approved_holiday.add(easter(year)) #Easter
+        approved_holiday.add(datetime.date(year, 12, 24)) #Christmas
+        approved_holiday.add(datetime.date(year, 12, 31)) #NewYear
+        approved_holiday.add(datetime.date(year-1, 12, 31)) #newYear
     return approved_holiday
 
 def approved_holiday_hours(years):
@@ -135,7 +144,7 @@ def work_holiday_overlap(work_range, ahh_list):
     Get the overlap of worked hours and approved holiday hours
 
     work_range -- the range of the worked shifts during the pay cycle
-    ahh_list -- a list of approved holiday hours (datetim range)
+    ahh_list -- a list of approved holiday hours (datetime range)
 
     return the total overlapping time in minutes.
     '''
@@ -342,6 +351,15 @@ def read_shift_record(shift_record_path):
     return (df, PAY_PERIOD, start_date, end_date)
 
 def read_one_person_record(shift_record_path, selected_name):
+    '''
+    Read the record of a specifc staff for off-cycle payroll.
+
+    shift_record_path -- file path to the shift record
+
+    selected_name -- full name of the staff ("First Last")
+
+    return pandas dataframes: shift record (df), pay period, start date, and end date.
+    '''
     #read dataset from path
     try:
         df = pd.read_excel(shift_record_path)
