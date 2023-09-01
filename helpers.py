@@ -1960,12 +1960,13 @@ def output_invoice(save_path, shift_list, output, mgr_benefits, df_benefits, tot
     wb.save(save_path)
     wb.close()
 
-def output_underlying(mgr_pr, non_mgr_pr, save_path, PAY_PERIOD):
+def output_underlying(mgr_pr, non_mgr_pr, save_path, PAY_PERIOD, FULL_CYCLE):
     '''
     Output the underlying payroll information as a square dataset in csv format
     
     mgr_pr -- manager's payroll dictionary 
     non_mgr_pr -- non-managers's payroll dictionary
+    FULL_CYCLE -- boolean: if we are processing a full pay cycle
     '''
     #the underlying payroll information
     noumenon = pd.DataFrame(columns=['Pay Period','Name', 'Total Gross Wage', 'Shift', 'Min. Worked', 'Hrs. Worked', 'Wage', 'Gross Wages', 
@@ -1984,7 +1985,8 @@ def output_underlying(mgr_pr, non_mgr_pr, save_path, PAY_PERIOD):
         flattened = pd.concat([payroll, summary, acc_A, acc_B, acc_C], axis=1)
         noumenon = pd.concat([noumenon, flattened], axis=0, ignore_index=True)
     #drop manager-only info
-    noumenon = noumenon.drop(['Total Hours Worked'], axis=1)
+    if FULL_CYCLE:
+        noumenon = noumenon.drop(['Total Hours Worked'], axis=1)
     #save file
     noumenon.to_csv(save_path+"/"+f"PAYROLL_FOR_MACHINE - {PAY_PERIOD}.csv", index=False)
 
