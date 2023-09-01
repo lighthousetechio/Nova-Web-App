@@ -120,7 +120,9 @@ def process_one():
                 #crop the shift record based on pay cycle
                 df_shift_merged, df_after_pay_period, prepaid_hours, week_order, PREPAY = crop_shifts(df_shift_merged, start_date, end_date)
                 #generate payroll outputs
+                df_shift_merged = df_shift_merged.loc[df_shift_merged['Name'] == selected_name]
                 non_mgr_pr, mgr_pr, non_mgr_bkd, mgr_bkd, new_accrued_hrs = generate_payroll(df_shift_merged, accrued_hrs, bonus_df, bonus, time_off, manager_rates, staff_info, prepaid_last_time, PAY_PERIOD, week_order, PREPAY)
+
                 #output payroll files
                 output_payroll_for_one(selected_name, save_path, df_shift_merged, non_mgr_pr, mgr_pr, non_mgr_bkd, mgr_bkd, time_off_as_shifts, PAY_PERIOD)
                     #output payroll files
