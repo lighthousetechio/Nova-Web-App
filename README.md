@@ -8,7 +8,7 @@ Outputs:
 
 A. Full Cycle: a payroll output, a new tracker, an invoice (all .xlsx), and a payroll for machine (.csv).
 
-B. Off Cycle: a payroll output (.xlsx) for selected staff.
+B. Off Cycle: a payroll output (.xlsx) for selected staff and a payroll for machine (.csv).
 
 Please follow the instructions on the webpage. 
 Messages and warnings are displayed as alerts. 
