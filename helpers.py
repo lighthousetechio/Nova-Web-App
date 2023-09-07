@@ -1574,6 +1574,9 @@ def generate_invoice(df_shift_merged, manager_rates, non_manager_rates, staff_in
     return (shift_list, output, mgr_benefits, df_benefits, total_mgr)
 
 def output_invoice(save_path, shift_list, output, mgr_benefits, df_benefits, total_mgr, df_shift_merged, PAY_PERIOD):
+    '''
+    Output the invoice and return the underlying dataset
+    '''
     save_path = save_path+"/"+f"INVOICE - {PAY_PERIOD}.xlsx"
     # custom sort
     for i in range(len(shift_list)):
@@ -1959,13 +1962,16 @@ def output_invoice(save_path, shift_list, output, mgr_benefits, df_benefits, tot
 
     wb.save(save_path)
     wb.close()
+    # return the underlying dataset.
+    return df
 
-def output_underlying(mgr_pr, non_mgr_pr, save_path, PAY_PERIOD, FULL_CYCLE):
+def output_underlying(mgr_pr, non_mgr_pr, invoice_df, save_path, PAY_PERIOD, FULL_CYCLE):
     '''
     Output the underlying payroll information as a square dataset in csv format
     
     mgr_pr -- manager's payroll dictionary 
     non_mgr_pr -- non-managers's payroll dictionary
+    invoice_df -- pandas dataframe containing info about invoice
     FULL_CYCLE -- boolean: if we are processing a full pay cycle
     '''
     #the underlying payroll information
@@ -1984,10 +1990,19 @@ def output_underlying(mgr_pr, non_mgr_pr, save_path, PAY_PERIOD, FULL_CYCLE):
         acc_C = pd.concat([pack['accrued_C']] * len(payroll), ignore_index=True)
         flattened = pd.concat([payroll, summary, acc_A, acc_B, acc_C], axis=1)
         noumenon = pd.concat([noumenon, flattened], axis=0, ignore_index=True)
-    #drop manager-only info
-    if FULL_CYCLE:
-        noumenon = noumenon.drop(['Total Hours Worked'], axis=1)
     #save file
-    noumenon.to_csv(save_path+"/"+f"PAYROLL_FOR_MACHINE - {PAY_PERIOD}.csv", index=False)
+    if FULL_CYCLE:
+        #drop manager only column
+        noumenon = noumenon.drop(['Total Hours Worked'], axis=1)
+        invoice_df['Pay Period'] = PAY_PERIOD
+        invoice_df = invoice_df[['Pay Period'] + [col for col in invoice_df if col != 'Pay Period']]
+        with pd.ExcelWriter(save_path + "/" + f"MACHINE_READABLE_OUTPUT - {PAY_PERIOD}.xlsx") as writer:
+            # Write each dataframe to a separate tab
+            noumenon.to_excel(writer, sheet_name='Payroll', index=False)
+            invoice_df.to_excel(writer, sheet_name='Invoice', index=False)
+    else:
+        with pd.ExcelWriter(save_path + "/" + f"MACHINE_READABLE_OUTPUT - {PAY_PERIOD}.xlsx") as writer:
+            noumenon.to_excel(writer, sheet_name='Payroll', index=False)
+
 
 #end of helper

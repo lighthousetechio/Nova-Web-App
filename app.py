@@ -87,9 +87,9 @@ def process_cycle():
         #generate invoice outputs
         shift_list, output, mgr_benefits, df_benefits, total_mgr = generate_invoice(df_shift_merged, manager_rates, non_manager_rates, staff_info, non_mgr_pr, mgr_pr)
         #output invoice file
-        output_invoice(save_path, shift_list, output, mgr_benefits, df_benefits, total_mgr, df_shift_merged, PAY_PERIOD)
+        invoice_df = output_invoice(save_path, shift_list, output, mgr_benefits, df_benefits, total_mgr, df_shift_merged, PAY_PERIOD)
         #output machine_readable payroll
-        output_underlying(mgr_pr, non_mgr_pr, save_path, PAY_PERIOD, True)
+        output_underlying(mgr_pr, non_mgr_pr, invoice_df, save_path, PAY_PERIOD, True)
        
         file_names = [f for f in os.listdir(save_path) if os.path.isfile(os.path.join(save_path, f))]
         #flag success
@@ -126,7 +126,7 @@ def process_one():
                 #output payroll files
                 output_payroll_for_one(selected_name, save_path, df_shift_merged, non_mgr_pr, mgr_pr, non_mgr_bkd, mgr_bkd, time_off_as_shifts, PAY_PERIOD)
                     #output payroll files
-                output_underlying(mgr_pr, non_mgr_pr, save_path, PAY_PERIOD, False)
+                output_underlying(mgr_pr, non_mgr_pr, {}, save_path, PAY_PERIOD, False)
                 file_names = [f for f in os.listdir(save_path) if os.path.isfile(os.path.join(save_path, f))]
 
                 return jsonify({"status": "success", "message": f"File Processed Successfully for {selected_name}", "files": file_names})
