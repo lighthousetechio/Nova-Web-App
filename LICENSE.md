@@ -2,7 +2,7 @@
 
 ### Copyright (c) 2023 Nova Home Support LLC
 
-This work by Nova Home Support LLC is licensed under the [Creative Commons Attribution-NonCommercial 4.0 International License](https://creativecommons.org/licenses/by-nc/4.0/legalcode).
+This work by Nova Home Support LLC is licensed under the [Creative Commons Attribution-NonCommercial 4.0 International License](https://creativecommons.org/licenses/by-nc/4.0/).
 
 ## Creative Commons Attribution-NonCommercial 4.0 International Public License
 
