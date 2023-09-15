@@ -22,5 +22,5 @@ Finishing one process takes about 10-20 seconds.
 
 This work is licensed under a Creative Commons Attribution-NonCommercial 4.0 International License by Nova Home Support LLC.
 
-![by-nc](https://github.com/HaosenHe/Nova-Web-App/assets/29806214/da80f40b-82b8-460d-902f-b91e0d167d97) 
+[![by-nc](https://github.com/HaosenHe/Nova-Web-App/assets/29806214/da80f40b-82b8-460d-902f-b91e0d167d97)](https://creativecommons.org/licenses/by-nc/4.0/)
 
