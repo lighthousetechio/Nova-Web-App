@@ -20,4 +20,6 @@ AWS App Runner automatically deploys the program by pulling this GitHub repo.
 The server is set to use 0.5 Virtual CPU and 1 GB of storage. 
 Finishing one process takes about 10-20 seconds.
 
-The web app is running at https://wuabvtbqcm.us-west-2.awsapprunner.com/
+This work is licensed under a Creative Commons Attribution-NonCommercial 4.0 International License by Nova Home Support LLC."
+![by-nc](https://github.com/HaosenHe/Nova-Web-App/assets/29806214/da80f40b-82b8-460d-902f-b91e0d167d97) 
+
