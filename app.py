@@ -167,3 +167,6 @@ def get_names():
 # main
 if __name__ == '__main__':
     app.run()
+
+# Copyright (c) [2023] [Nova Home Support LLC]
+# This code is licensed under the Creative Commons Attribution-NonCommercial 4.0 International License. See LICENSE.md for details.
