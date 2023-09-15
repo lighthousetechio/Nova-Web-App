@@ -2005,4 +2005,5 @@ def output_underlying(mgr_pr, non_mgr_pr, invoice_df, save_path, PAY_PERIOD, FUL
             noumenon.to_excel(writer, sheet_name='Payroll', index=False)
 
 
-#end of helper
+# Copyright (c) [2023] [Nova Home Support LLC]
+# This code is licensed under the Creative Commons Attribution-NonCommercial 4.0 International License. See LICENSE.md for details.
