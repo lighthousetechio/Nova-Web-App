@@ -248,6 +248,17 @@ def read_shift_record(shift_record_path):
         df = pd.read_excel(shift_record_path)
     except:
         raise FileNotFoundError("Cannot open the shift record file. Make sure it's an .XLSX file.")
+    try:
+        report_criteria = pd.read_excel(shift_record_path, sheet_name="Report Criteria", engine='openpyxl')
+        # Convert the dataframe into a dictionary for easier access
+        criteria_dict = dict(zip(report_criteria['Report Criteria'], report_criteria['Value']))
+        # Parse the dates and create datetime.datetime objects
+        start_date = datetime.datetime.strptime(criteria_dict.get('Slot Start Date From'), '%m/%d/%Y')
+        end_date = datetime.datetime.strptime(criteria_dict.get('Slot Start Date To'), '%m/%d/%Y')
+        PAY_PERIOD = str(start_date.date()) + ' - ' + str(end_date.date())
+        end_date = end_date + datetime.timedelta(days=1)
+    except:
+        raise ValueError(f"Cannot read report criteria.")
     # indicating whether the data has been pre-processed
     pre_cleaned = False
     #subsetting useful columns
@@ -298,11 +309,6 @@ def read_shift_record(shift_record_path):
         CODT = df['Check-Out Date'].str.cat(df['Check-Out Time'], sep=' ')
         CIDT = CIDT.apply(lambda x: datetime.datetime.strptime(x, r'%m/%d/%Y %I:%M %p'))
         CODT = CODT.apply(lambda x: datetime.datetime.strptime(x, r'%m/%d/%Y %I:%M %p'))
-        PAY_PERIOD = str(CIDT.min().date()) + ' - ' + str(CIDT.max().date())
-        start_date, end_date = PAY_PERIOD.split(' - ')
-        start_date = datetime.datetime.strptime(start_date, '%Y-%m-%d')
-        end_date = datetime.datetime.strptime(end_date, '%Y-%m-%d')
-        end_date = end_date + datetime.timedelta(days=1)
         # add python-format datetime to the dataframe
         df['CIDT'] = CIDT
         df['CODT'] = CODT
@@ -365,6 +371,17 @@ def read_one_person_record(shift_record_path, selected_name):
         df = pd.read_excel(shift_record_path)
     except:
         raise FileNotFoundError("Cannot open the shift record file. Make sure it's an .XLSX file.")
+    try:
+        report_criteria = pd.read_excel(shift_record_path, sheet_name="Report Criteria", engine='openpyxl')
+        # Convert the dataframe into a dictionary for easier access
+        criteria_dict = dict(zip(report_criteria['Report Criteria'], report_criteria['Value']))
+        # Parse the dates and create datetime.datetime objects
+        start_date = datetime.datetime.strptime(criteria_dict.get('Slot Start Date From'), '%m/%d/%Y')
+        end_date = datetime.datetime.strptime(criteria_dict.get('Slot Start Date To'), '%m/%d/%Y')
+        PAY_PERIOD = str(start_date.date()) + ' - ' + str(end_date.date())
+        end_date = end_date + datetime.timedelta(days=1)
+    except:
+        raise ValueError(f"Cannot read report criteria.")
     # indicating whether the data has been pre-processed
     pre_cleaned = False
     #subsetting useful columns
@@ -665,6 +682,8 @@ def crop_shifts(df, start_date, end_date):
     df_after_pay_period = deepcopy(df[df['CIDT'] >= end_date])
     # Filter the DataFrame based on the time duration
     df = df[(df['CIDT'] >= start_date) & (df['CIDT'] < end_date)]
+    if len(df) == 0:
+        return(df, df_after_pay_period, pd.DataFrame(),[str(start_date.date())], False)
     ### get shifts that wil be prepaid in this pay cycle (belong to this pay cycle, but falls under the last partial week)
     week_dataframes = split_by_work_week(df)
     week_order = []
@@ -1170,7 +1189,7 @@ def generate_payroll(df_shift_merged, accrued_hrs, bonus_df, bonus, time_off, ma
 
     Return results from the four methods
     '''
-    staff_names = set(staff_info['Name'].unique()).union(set(manager_rates['Name'].unique()))
+    staff_names = set().union(*[df_shift_merged.Name, bonus.Name, time_off.Name]).intersection(set().union(*[staff_info.Name, manager_rates.Name]))
     manager_status = [is_manager(i,manager_rates) for i in staff_names]
     non_mgr = [] #list of names
     mgr = [] #list of names
@@ -1191,11 +1210,11 @@ def generate_payroll(df_shift_merged, accrued_hrs, bonus_df, bonus, time_off, ma
     mgr_pr = {}
     non_mgr_bkd = {}
     mgr_bkd = {}
-    if any(is_manager(name, manager_rates) == False for name in df_shift_merged.Name.unique()):
+    if any(is_manager(name, manager_rates) == False for name in staff_names):
         non_mgr_pr, new_accrued_hrs = non_manager_payroll(non_mgr, df_shift_merged, accrued_hrs, bonus_df, bonus, time_off, staff_info,
                                                         week_order, prepaid_last_time, PAY_PERIOD, new_accrued_hrs)
         non_mgr_bkd = non_manager_weekly_breakdown(non_mgr, df_shift_merged, prepaid_last_time, week_order)
-    if any(is_manager(name, manager_rates) for name in df_shift_merged.Name.unique()):
+    if any(is_manager(name, manager_rates) for name in staff_names):
         mgr_pr, new_accrued_hrs = manager_payroll(mgr, manager_rates, df_shift_merged, accrued_hrs, bonus_df, bonus, time_off, week_order, 
                                               prepaid_last_time, PAY_PERIOD, PREPAY, new_accrued_hrs)
         mgr_bkd = manager_weekly_breakdown(mgr, manager_rates, df_shift_merged, week_order, prepaid_last_time, PAY_PERIOD, PREPAY)
@@ -1371,7 +1390,10 @@ def output_payroll_for_one(selected_name, save_path, df_shift_merged, non_mgr_pr
             df.to_excel(writer, engine="xlsxwriter",sheet_name='WEEKLY BREAKDOWNS', startrow=startrow, index=False)
             startrow += (df.shape[0] + 1)
         startrow += 2
-    writer.sheets['WEEKLY BREAKDOWNS'].set_column('A:H', 40)
+    try:
+        writer.sheets['WEEKLY BREAKDOWNS'].set_column('A:H', 40)
+    except:
+        pass
     df_shift_merged = pd.concat([df_shift_merged, time_off_as_shifts], ignore_index=True)
     df_shift_merged = df_shift_merged.sort_values(by=['Last Name', 'CIDT'])
     df_shift_merged.to_excel(writer, sheet_name="SHIFT BREAKDOWNS", index=False)
