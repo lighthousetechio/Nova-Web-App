@@ -100,6 +100,37 @@ def check_shift_overlap(df, name):
                 err_string = err_string + (f'Overlapping shifts detected for {name} on {problem_date} for Shift type {df_indiv.iloc[index].Shift} and {df_indiv.iloc[index+1].Shift}.    ')
     return err_string
 
+def check_unusual_overnight(df):
+    '''
+    Check and flag unusual overnight shifts.
+
+    df --  a pandas dataframe containing shift records
+
+    Rule:
+        if any of the shifts in 'OA1', 'OA2', 'IHSS-Asleep', 'OPA' start before 10:45 PM
+        or 7:15 AM, then flag it as an error.
+
+    returns a string indicating unsual overnight shifts for the employee.
+    '''
+    allowed_shifts = ['OA1', 'OA2', 'IHSS-Asleep', 'OPA']
+    start_time = datetime.time(7, 15)  # 7:15 AM
+    end_time = datetime.time(22, 45)   # 10:45 PM
+    # Create a mask for your conditions
+    mask = (
+        df['Shift'].isin(allowed_shifts) & 
+        (df['CIDT'].dt.time > start_time) & 
+        (df['CIDT'].dt.time < end_time)
+    )
+    # Apply the mask to get a subset of susceptible shifts
+    subset_df = df[mask]
+    err_string = ""
+    for _, row in subset_df.iterrows():
+        name = row['Name']
+        problem_date = row['Check-In Date']
+        problem_shift = row['Shift']
+        err_string = err_string + (f'Unusual timing for shift {problem_shift} detected for {name} on {problem_date}.    ')
+    return err_string
+
 def approved_holiday(years):
     '''
     Get a set of approved holiday hours.
@@ -320,6 +351,10 @@ def read_shift_record(shift_record_path):
         err_string = err_string + check_shift_overlap(df, name)
     if err_string != "":
         raise ValueError(err_string)
+    # Check for unsual overnight shifts
+    err_string = err_string + check_unusual_overnight(df)
+    if err_string != "":
+        raise ValueError(err_string)
     # Split shifts that span two days
     new_rows = []
     # loop through each row of the original dataframe
@@ -447,6 +482,10 @@ def read_one_person_record(shift_record_path, selected_name):
     err_string = ""
     for name in df.Name.unique():
         err_string = err_string + check_shift_overlap(df, name)
+    if err_string != "":
+        raise ValueError(err_string)
+    # Check for unsual overnight shifts
+    err_string = err_string + check_unusual_overnight(df)
     if err_string != "":
         raise ValueError(err_string)
     # Split shifts that span two days
