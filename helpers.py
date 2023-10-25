@@ -2055,8 +2055,16 @@ def output_underlying(mgr_pr, non_mgr_pr, invoice_df, save_path, PAY_PERIOD, FUL
     if FULL_CYCLE:
         #drop manager only column
         noumenon = noumenon.drop(['Total Hours Worked'], axis=1)
+        #add pay period to invoice
         invoice_df['Pay Period'] = PAY_PERIOD
+        #reorganized order of cols
         invoice_df = invoice_df[['Pay Period'] + [col for col in invoice_df if col != 'Pay Period']]
+        invoice_df = invoice_df.rename(columns={"Shifts": "Shift",
+                                                "Hours": "Gross_Hrs",
+                                                "Rates": "Rate",
+                                                "Billable": "SARC_Billed_Amt",
+                                                "BST_ins": "Ins_Billed_Hrs",
+                                                "BST_SARC": "SARC_Billed_Hrs"})
         with pd.ExcelWriter(save_path + "/" + f"MACHINE_READABLE_OUTPUT - {PAY_PERIOD}.xlsx") as writer:
             # Write each dataframe to a separate tab
             noumenon.to_excel(writer, sheet_name='Payroll', index=False)
