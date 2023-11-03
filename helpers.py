@@ -722,7 +722,7 @@ def crop_shifts(df, start_date, end_date):
     # Filter the DataFrame based on the time duration
     df = df[(df['CIDT'] >= start_date) & (df['CIDT'] < end_date)]
     if len(df) == 0:
-        return(df, df_after_pay_period, pd.DataFrame(),[str(start_date.date())], False)
+        return(df, df_after_pay_period, pd.DataFrame(columns=df.columns),[str(start_date.date())], False)
     ### get shifts that wil be prepaid in this pay cycle (belong to this pay cycle, but falls under the last partial week)
     week_dataframes = split_by_work_week(df)
     week_order = []
@@ -749,10 +749,10 @@ def crop_shifts(df, start_date, end_date):
         # Drop the item with the corresponding key from week_dataframes
         week_dataframes.pop(key_to_drop)
     PREPAY = (week_df.iloc[-1]['full week']==False) # partial week or full week
-    prepaid_hours = pd.DataFrame()
+    prepaid_hours = pd.DataFrame(columns=df.columns)
     if PREPAY:
         prepaid_hours = deepcopy(week_dataframes[week_df.iloc[-1]['week']])
-    return (df, df_after_pay_period, prepaid_hours,week_order, PREPAY)
+    return (df, df_after_pay_period, prepaid_hours, week_order, PREPAY)
 
 def non_manager_payroll(non_mgr, df_shift_merged, accrued_hrs, bonus_df, bonus, time_off, staff_info, week_order, prepaid_last_time, PAY_PERIOD, new_accrued_hrs):   
     '''
@@ -775,7 +775,11 @@ def non_manager_payroll(non_mgr, df_shift_merged, accrued_hrs, bonus_df, bonus, 
     #For each non-manager
     df_shift_merged = deepcopy(df_shift_merged)
     df_shift_merged['Shift'] = df_shift_merged['Shift'].replace({'Training-HSS': 'HSS1', 'Training-RBT': 'BST1'})
-    for i, name in enumerate(non_mgr):
+    if len(prepaid_last_time) > 0:
+        prepaid_ppl = prepaid_last_time['Name'].unique()
+    else:
+        prepaid_ppl = set()
+    for _, name in enumerate(non_mgr):
         #subset to the individual's shift
         df_indiv = df_shift_merged.loc[df_shift_merged['Name'] == name]
         regular_rate = staff_info.loc[staff_info['Name'] == name]['Admin/Sick/Vacay Wage'].iloc[0]
@@ -801,7 +805,7 @@ def non_manager_payroll(non_mgr, df_shift_merged, accrued_hrs, bonus_df, bonus, 
         df_weeks = split_by_work_week(df_indiv)
         for key in df_weeks.keys(): #each key is a timestamp
             df_weekly = deepcopy(df_weeks[key])
-            if (key == week_order[0]) and (name in prepaid_last_time['Name'].unique()): #first week and prepaid
+            if (key == week_order[0]) and (name in prepaid_ppl): #first week and prepaid
                 df_weekly = pd.concat([prepaid_last_time.loc[prepaid_last_time.Name == name], df_weekly], ignore_index=True)
             df_weekly_worked = df_weekly[~df_weekly['Shift'].str.contains('-Not-Worked')]
             weekly_hours_worked = round(df_weekly_worked['Min. Worked'].sum()/60, 2)
@@ -911,6 +915,10 @@ def manager_payroll(mgr, manager_rates, df_shift_merged, accrued_hrs, bonus_df, 
     mgr_payroll = []
     df_shift_merged = deepcopy(df_shift_merged)
     aggregations = {'Min. Worked': 'sum', 'Regular Hourly Wage': 'first', 'Name': 'first'}
+    if len(prepaid_last_time) > 0:
+        prepaid_ppl = prepaid_last_time['Name'].unique()
+    else:
+        prepaid_ppl = set()
     for name in mgr:
         df_indiv = df_shift_merged.loc[df_shift_merged['Name'] == name]
         df_indiv_worked = df_indiv[~df_indiv['Shift'].str.contains('-Not-Worked')]
@@ -927,7 +935,7 @@ def manager_payroll(mgr, manager_rates, df_shift_merged, accrued_hrs, bonus_df, 
                 df_weekly = deepcopy(df_weeks[key])
                 df_payroll_weekly = pd.DataFrame()
                 # add prepaid time
-                if (key==week_order[0]) and (name in prepaid_last_time['Name'].unique()): #prepaid
+                if (key == week_order[0]) and (name in prepaid_ppl): #first week and prepaid
                     df_prepaid = pd.DataFrame({'Name': name, 'Shift': ['Prepaid Last Time'], 'Min. Worked': [60], 
                                                'Regular Hourly Wage': [-MGR_weekly_salary]})
                     df_payroll_weekly = pd.concat([df_payroll_weekly, df_prepaid], ignore_index=True)
@@ -1036,8 +1044,12 @@ def non_manager_weekly_breakdown(non_mgr, df_shift_merged, prepaid_last_time, we
     non_mgr_payroll = []
     prepaid_last_time = deepcopy(prepaid_last_time)
     df_shift_merged = deepcopy(df_shift_merged)
+    if len(prepaid_last_time) > 0:
+        prepaid_ppl = prepaid_last_time['Name'].unique()
+    else:
+        prepaid_ppl = set()
     #For each non-manager
-    for i, name in enumerate(non_mgr):
+    for _, name in enumerate(non_mgr):
         #subset to the individual's shift
         aggregations = {'Min. Worked': 'sum', 'BOT Hourly Wage': 'first', 'Name': 'first'}
         df_indiv = df_shift_merged.loc[df_shift_merged['Name'] == name]
@@ -1045,7 +1057,7 @@ def non_manager_weekly_breakdown(non_mgr, df_shift_merged, prepaid_last_time, we
         for key in df_weeks.keys(): #each key is a timestamp
             df_weekly = deepcopy(df_weeks[key])
             df_payroll = deepcopy(df_weekly[['Shift', 'Min. Worked', 'BOT Hourly Wage', 'Name']])
-            if (key == week_order[0]) and (name in prepaid_last_time['Name'].unique()): #first week and prepaid
+            if (key == week_order[0]) and (name in prepaid_ppl): #first week and prepaid
                 df_weekly = pd.concat([prepaid_last_time.loc[prepaid_last_time.Name == name], df_weekly], ignore_index=True)
                 prepaid_concat = prepaid_last_time.loc[prepaid_last_time.Name == name]
                 prepaid_concat['Shift'] = 'PREPAID ' + prepaid_concat['Shift']
@@ -1112,6 +1124,10 @@ def manager_weekly_breakdown(mgr, manager_rates, df_shift_merged, week_order, pr
     '''
     mgr_payroll = []
     df_shift_merged = deepcopy(df_shift_merged)
+    if len(prepaid_last_time) > 0:
+        prepaid_ppl = prepaid_last_time['Name'].unique()
+    else:
+        prepaid_ppl = set()
     #aggregations = {'Min. Worked': 'sum', 'Regular Hourly Wage': 'first', 'Name': 'first'}
     for name in mgr:
         df_indiv = df_shift_merged.loc[df_shift_merged['Name'] == name]
@@ -1159,7 +1175,7 @@ def manager_weekly_breakdown(mgr, manager_rates, df_shift_merged, week_order, pr
                 df_weekly = deepcopy(df_weeks[key])
                 df_weekly_worked = df_weekly[~df_weekly['Shift'].str.contains('-Not-Worked')]
                 df_payroll = pd.DataFrame()
-                if (key==week_order[0]) and (name in prepaid_last_time['Name'].unique()): #prepaid
+                if (key==week_order[0]) and (name in prepaid_ppl): #prepaid
                     df_prepaid = pd.DataFrame({'Name': name, 'Shift': ['PREPAID MGR Salary'], 'Min. Worked': [60], 
                                                'Regular Hourly Wage': [MGR_weekly_salary]})
                     df_payroll = pd.concat([df_payroll, df_prepaid], ignore_index=True)
@@ -1360,16 +1376,6 @@ def output_payroll_files(save_path, df_shift_merged, staff_info, non_mgr_pr, mgr
         column_length = max(staff_info[column].astype(str).map(len).max(), len(column))
         col_idx = staff_info.columns.get_loc(column)
         writer.sheets['STAFF INFO'].set_column(col_idx, col_idx, column_length)
-
-    for column in prepaid_hours:
-        column_length = max(prepaid_hours[column].astype(str).map(len).max(), len(column))
-        col_idx = prepaid_hours.columns.get_loc(column)
-        writer.sheets['IGNORE! (Prepaid Shifts)'].set_column(col_idx, col_idx, column_length)
-
-    for column in df_after_pay_period:
-        column_length = max(df_after_pay_period[column].astype(str).map(len).max(), len(column))
-        col_idx = df_after_pay_period.columns.get_loc(column)
-        writer.sheets['IGNORE! (Next Period Shifts)'].set_column(col_idx, col_idx, column_length)
 
     writer.save() 
 
