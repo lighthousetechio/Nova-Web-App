@@ -146,9 +146,9 @@ def approved_holiday(years):
         holiday_ls = {k for k, v in holidays.US(years=year).items() if v in holiday_set}
         approved_holiday = approved_holiday.union(holiday_ls)
         approved_holiday.add(easter(year)) #Easter
-        approved_holiday.add(datetime.date(year, 12, 24)) #Christmas
+        approved_holiday.add(datetime.date(year, 12, 24)) #Christmas eve
         approved_holiday.add(datetime.date(year, 12, 31)) #NewYear
-        approved_holiday.add(datetime.date(year-1, 12, 31)) #newYear
+        approved_holiday.add(datetime.date(year-1, 12, 31)) #Last NewYear
     return approved_holiday
 
 def approved_holiday_hours(years):
@@ -201,7 +201,7 @@ def calc_worked_holiday(df):
         # a list of all years in the shift data
         years = set([min([df.iloc[i]['CIDT'].year for i in range(len(df))]), max([df.iloc[i]['CODT'].year for i in range(len(df))])])
         #range for each shift
-        duration_range = [Range(start = df.iloc[i]['CIDT'].to_pydatetime(), end = df.iloc[i]['CIDT'].to_pydatetime()) for i in range(len(df))]
+        duration_range = [Range(start = df.iloc[i]['CIDT'].to_pydatetime(), end = df.iloc[i]['CODT'].to_pydatetime()) for i in range(len(df))]
         ahh_list = approved_holiday_hours(years)
         holiday_work_time = [work_holiday_overlap(duration_range[i], ahh_list) for i in range(len(df))]
         df['Holiday Worked Duration (Minutes)'] = holiday_work_time
@@ -793,10 +793,11 @@ def non_manager_payroll(non_mgr, df_shift_merged, accrued_hrs, bonus_df, bonus, 
         df_indiv_worked = df_indiv[~df_indiv['Shift'].str.contains('-Not-Worked')]
         total_hours_worked = round(df_indiv_worked['Min. Worked'].sum()/60, 2)
         #Dealing with holiday
-        if df_indiv['Holiday Worked Duration (Minutes)'].sum() > 0:
+        if df_indiv_worked['Holiday Worked Duration (Minutes)'].sum() > 0:
             df_holiday_pay = df_indiv_worked[['Name', 'Shift', 'Holiday Worked Duration (Minutes)', 'Regular Hourly Wage']]
+            df_holiday_pay = df_holiday_pay[df_holiday_pay['Holiday Worked Duration (Minutes)'] != 0]
             df_holiday_pay['Regular Hourly Wage'] = (df_holiday_pay['Regular Hourly Wage']*0.5).round(2)
-            df_holiday_pay['Shift'] = df_holiday_pay['Shift'].apply(lambda x: x + ' HOL')
+            df_holiday_pay['Shift'] = df_holiday_pay['Shift'].apply(lambda x: x + ' Holiday Extra Pay')
             df_holiday_pay = df_holiday_pay.rename(columns={'Holiday Worked Duration (Minutes)': 'Min. Worked'})
             df_holiday_pay = df_holiday_pay.groupby('Shift').agg(aggregations)
             df_holiday_pay = df_holiday_pay.reset_index()
@@ -961,11 +962,13 @@ def manager_payroll(mgr, manager_rates, df_shift_merged, accrued_hrs, bonus_df, 
                                                     'Min. Worked': [overtime_hours], 'Regular Hourly Wage': [BOT_pay_rate]})
                         df_payroll_weekly= pd.concat([df_payroll_weekly, df_overtime], ignore_index=True)
                 df_payroll=pd.concat([df_payroll, df_payroll_weekly], ignore_index=True)
+        #add holiday bonus
         holiday_work_time = df_indiv_worked['Holiday Worked Duration (Minutes)'].sum()
         if holiday_work_time > 0:
-            df_holiday_pay = pd.DataFrame({'Name': name, 'Shift': ['MGR HOL BON'], 'Min. Worked': [holiday_work_time], 
-                                           'Regular Hourly Wage': [round(regular_rate/2, 2)]})
-            df_payroll_weekly= pd.concat([df_payroll_weekly, df_holiday_pay], ignore_index=True)
+            df_holiday_pay = pd.DataFrame({'Name': name, 'Shift': ['Holiday Extra Pay'], 'Min. Worked': [holiday_work_time], 
+                                        'Regular Hourly Wage': [round(regular_rate/2, 2)]})
+            df_payroll= pd.concat([df_payroll, df_holiday_pay], ignore_index=True)
+        #add sick and vacation
         pay_period_sick_time = time_off.loc[time_off['Name']== name]['Sick Hrs'].sum()
         pay_period_vac_time = time_off.loc[time_off['Name']== name]['Vac Hrs'].sum()      
         if name in list(time_off['Name']):
@@ -1081,8 +1084,9 @@ def non_manager_weekly_breakdown(non_mgr, df_shift_merged, prepaid_last_time, we
             df_weekly_worked = df_weekly[~df_weekly['Shift'].str.contains('-Not-Worked')]
             if df_weekly_worked['Holiday Worked Duration (Minutes)'].sum() > 0:
                 df_holiday_pay = df_weekly_worked[['Name', 'Shift', 'Holiday Worked Duration (Minutes)', 'BOT Hourly Wage']]
+                df_holiday_pay = df_holiday_pay[df_holiday_pay['Holiday Worked Duration (Minutes)'] != 0]
                 df_holiday_pay['BOT Hourly Wage'] = df_holiday_pay['BOT Hourly Wage']*0.5
-                df_holiday_pay['Shift'] = df_holiday_pay['Shift'].apply(lambda x: x + ' HOL')
+                df_holiday_pay['Shift'] = df_holiday_pay['Shift'].apply(lambda x: x + ' Holiday Extra Pay')
                 df_holiday_pay = df_holiday_pay.rename(columns={'Holiday Worked Duration (Minutes)': 'Min. Worked'})
                 df_holiday_pay = df_holiday_pay.groupby('Shift').agg(aggregations)
                 df_holiday_pay = df_holiday_pay.reset_index()
@@ -1132,15 +1136,17 @@ def manager_weekly_breakdown(mgr, manager_rates, df_shift_merged, week_order, pr
     for name in mgr:
         df_indiv = df_shift_merged.loc[df_shift_merged['Name'] == name]
         df_indiv_worked = df_indiv[~df_indiv['Shift'].str.contains('-Not-Worked')]
-        df_payroll = pd.DataFrame()
+        df_payroll = pd.DataFrame(columns=['Name', 'Shift','Min. Worked', 'Regular Hourly Wage'])
         holiday_work_time = df_indiv_worked['Holiday Worked Duration (Minutes)'].sum()
+        non_exempt_rate = manager_rates.loc[manager_rates['Name'] == name]['Non-exempt Hourly Wage'].iloc[0]
+        #holiday extra pay
         if holiday_work_time > 0:
-            df_holiday_pay = pd.DataFrame({'Name': name, 'Shift': ['MGR HOL BON'], 'Min. Worked': [holiday_work_time], 
+            df_holiday_pay = pd.DataFrame({'Name': name, 'Shift': ['Holiday Extra Pay'], 'Min. Worked': [holiday_work_time], 
                                             'Regular Hourly Wage': [round(0.5 * non_exempt_rate, 2)]})
-            df_payroll_weekly= pd.concat([df_payroll_weekly, df_holiday_pay], ignore_index=True)
+            df_payroll = df_holiday_pay
         if name == 'Mikayla Napier':
             MGR_weekly_salary = manager_rates.loc[manager_rates['Name'] == name]['Exempt Semi-monthly Salary'].iloc[0]
-            df_payroll = pd.DataFrame({'Name': name, 'Shift': ['MGR Salary'], 'Min. Worked': [60], 'Regular Hourly Wage': [MGR_weekly_salary]})
+            df_payroll = pd.concat([df_payroll, pd.DataFrame({'Name': name, 'Shift': ['MGR Salary'], 'Min. Worked': [60], 'Regular Hourly Wage': [MGR_weekly_salary]})])
             key = PAY_PERIOD
             df_payroll['Hrs. Worked'] = round(df_payroll['Min. Worked']/60, 2)
             df_payroll['Hrs. Paid'] = df_payroll['Hrs. Worked']
@@ -1183,7 +1189,6 @@ def manager_weekly_breakdown(mgr, manager_rates, df_shift_merged, week_order, pr
                     df_weekly_worked = df_weekly[~df_weekly['Shift'].str.contains('-Not-Worked')]
                 weekly_hours_worked = (df_weekly_worked['Min. Worked'].sum()/60).round(2)
                 exempt_hours_worked = (df_weekly_worked.loc[df_weekly_worked['Shift'] != 'MGR-Direct-Care']['Min. Worked'].sum()/60).round(2)
-                non_exempt_rate = manager_rates.loc[manager_rates['Name'] == name]['Non-exempt Hourly Wage'].iloc[0]
                 overtime_hours = max(0, weekly_hours_worked-40)
                 if exempt_hours_worked >= (weekly_hours_worked - exempt_hours_worked) or ((key==week_order[-1]) and PREPAY): # Exempt
                     MGR_weekly_salary = manager_rates.loc[manager_rates['Name'] == name]['Exempt Weekly Salary'].iloc[0]
