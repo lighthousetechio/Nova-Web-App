@@ -165,9 +165,9 @@ def approved_holiday_hours(years):
     #append holiday hours according to Nova's unique rule.
     for x in approved_holiday(years):
         if (x.month == 12 and x.day == 31):
-            approved_holiday_dt.append(Range(start = datetime.datetime.combine(x, datetime.time(hour=23)),end = datetime.datetime.combine(x+datetime.timedelta(days=1), datetime.time(hour=23))))
+            approved_holiday_dt.append(Range(start = datetime.datetime.combine(x, datetime.time(hour=15)),end = datetime.datetime.combine(x+datetime.timedelta(days=1), datetime.time(hour=0))))
         else:
-            approved_holiday_dt.append(Range(start = datetime.datetime.combine(x, datetime.time(hour=7)), end = datetime.datetime.combine(x, datetime.time(hour=23))))
+            approved_holiday_dt.append(Range(start = datetime.datetime.combine(x, datetime.time(hour=0)), end = datetime.datetime.combine(x+datetime.timedelta(days=1), datetime.time(hour=0))))
     return approved_holiday_dt
 
 def work_holiday_overlap(work_range, ahh_list):
@@ -774,8 +774,9 @@ def non_manager_payroll(non_mgr, df_shift_merged, accrued_hrs, bonus_df, bonus, 
     non_mgr_payroll = []
     #For each non-manager
     df_shift_merged = deepcopy(df_shift_merged)
+    # name update
     df_shift_merged['Shift'] = df_shift_merged['Shift'].replace({'Training-HSS': 'HSS1', 'Training-RBT': 'BST1'})
-    if len(prepaid_last_time) > 0:
+    if len(prepaid_last_time) > 0: #who are prepaid last time?
         prepaid_ppl = prepaid_last_time['Name'].unique()
     else:
         prepaid_ppl = set()
@@ -794,11 +795,12 @@ def non_manager_payroll(non_mgr, df_shift_merged, accrued_hrs, bonus_df, bonus, 
         total_hours_worked = round(df_indiv_worked['Min. Worked'].sum()/60, 2)
         #Dealing with holiday
         if df_indiv_worked['Holiday Worked Duration (Minutes)'].sum() > 0:
-            df_holiday_pay = df_indiv_worked[['Name', 'Shift', 'Holiday Worked Duration (Minutes)', 'Regular Hourly Wage']]
-            df_holiday_pay = df_holiday_pay[df_holiday_pay['Holiday Worked Duration (Minutes)'] != 0]
-            df_holiday_pay['Regular Hourly Wage'] = (df_holiday_pay['Regular Hourly Wage']*0.5).round(2)
-            df_holiday_pay['Shift'] = df_holiday_pay['Shift'].apply(lambda x: x + ' Holiday Extra Pay')
+            df_holiday_pay = df_indiv_worked[['Name', 'Shift', 'Holiday Worked Duration (Minutes)', 'BOT Hourly Wage']] # filter
+            df_holiday_pay = df_holiday_pay[df_holiday_pay['Holiday Worked Duration (Minutes)'] != 0] # with holiday overlap
+            df_holiday_pay['Shift'] = df_holiday_pay['Shift'].apply(lambda x: x + ' Holiday Extra Pay') # rename cols
+            df_holiday_pay['Regular Hourly Wage'] = (df_holiday_pay['BOT Hourly Wage']*0.5).round(2) #halve the wage for extra pay
             df_holiday_pay = df_holiday_pay.rename(columns={'Holiday Worked Duration (Minutes)': 'Min. Worked'})
+            df_holiday_pay = df_holiday_pay.drop('BOT Hourly Wage', axis=1)
             df_holiday_pay = df_holiday_pay.groupby('Shift').agg(aggregations)
             df_holiday_pay = df_holiday_pay.reset_index()
             df_payroll= pd.concat([df_payroll, df_holiday_pay], ignore_index=True)
@@ -944,11 +946,12 @@ def manager_payroll(mgr, manager_rates, df_shift_merged, accrued_hrs, bonus_df, 
                 weekly_hours_worked = round(df_weekly['Min. Worked'].sum()/60, 2)
                 exempt_hours_worked = round(df_weekly.loc[df_weekly['Shift'] != 'MGR-Direct-Care']['Min. Worked'].sum()/60, 2)
                 overtime_hours = max(0, weekly_hours_worked-40)
-                if exempt_hours_worked >= (weekly_hours_worked - exempt_hours_worked) or ((key==week_order[-1]) and PREPAY): # Exempt
+                # Exempt
+                if exempt_hours_worked >= (weekly_hours_worked - exempt_hours_worked) or ((key==week_order[-1]) and PREPAY): 
                     MGR_weekly_salary = manager_rates.loc[manager_rates['Name'] == name]['Exempt Weekly Salary'].iloc[0]
                     tmp = pd.DataFrame({'Name': name, 'Shift': ['MGR Salary'], 'Min. Worked': [60], 'Regular Hourly Wage': [MGR_weekly_salary]})
                     df_payroll_weekly = pd.concat([df_payroll_weekly,tmp], ignore_index=True)
-                else: #non exempt
+                else: #Non exempt
                     aggregations2 = {'Min. Worked': 'sum',  'Name': 'first'}
                     tmp = deepcopy(df_weekly[['Name', 'Shift', 'Min. Worked']])
                     tmp = tmp.groupby('Shift').agg(aggregations2)
@@ -1085,8 +1088,8 @@ def non_manager_weekly_breakdown(non_mgr, df_shift_merged, prepaid_last_time, we
             if df_weekly_worked['Holiday Worked Duration (Minutes)'].sum() > 0:
                 df_holiday_pay = df_weekly_worked[['Name', 'Shift', 'Holiday Worked Duration (Minutes)', 'BOT Hourly Wage']]
                 df_holiday_pay = df_holiday_pay[df_holiday_pay['Holiday Worked Duration (Minutes)'] != 0]
-                df_holiday_pay['BOT Hourly Wage'] = df_holiday_pay['BOT Hourly Wage']*0.5
                 df_holiday_pay['Shift'] = df_holiday_pay['Shift'].apply(lambda x: x + ' Holiday Extra Pay')
+                df_holiday_pay['BOT Hourly Wage'] = df_holiday_pay['BOT Hourly Wage']*0.5
                 df_holiday_pay = df_holiday_pay.rename(columns={'Holiday Worked Duration (Minutes)': 'Min. Worked'})
                 df_holiday_pay = df_holiday_pay.groupby('Shift').agg(aggregations)
                 df_holiday_pay = df_holiday_pay.reset_index()
@@ -1102,9 +1105,9 @@ def non_manager_weekly_breakdown(non_mgr, df_shift_merged, prepaid_last_time, we
             df_payroll.loc[df_payroll['Shift'].str.contains('-Not-Worked'), 'Hrs. Worked'] = 0
             df_payroll.loc[df_payroll['Shift'].str.contains('OT Extra'), 'Hrs. Paid'] = 0
             df_payroll.loc[df_payroll['Shift'].str.contains('OT Extra'), 'Hrs. Worked'] = 0
-            df_payroll.loc[df_payroll['Shift'].str.contains('Asleep'), 'Nova-Paid Hrs.'] = 0
+            df_payroll.loc[df_payroll['Shift'].str.contains('Asleep') & ~df_payroll['Shift'].str.contains('Holiday Extra Pay'), 'Nova-Paid Hrs.'] = 0
             df_payroll['Nova-Paid Gross Wages'] = df_payroll['Gross Wages']
-            df_payroll.loc[df_payroll['Shift'].str.contains('Asleep'), 'Nova-Paid Gross Wages'] = 0
+            df_payroll.loc[df_payroll['Shift'].str.contains('Asleep') & ~df_payroll['Shift'].str.contains('Holiday Extra Pay'), 'Nova-Paid Gross Wages'] = 0
             df_payroll.loc[df_payroll['Shift'].str.contains('OT Extra'), 'Gross Wages'] = 0
             column_order = ['Name', 'Shift', 'Hrs. Worked', 'Hrs. Paid', 'Nova-Paid Hrs.', 'Wage', 'Gross Wages', 'Nova-Paid Gross Wages']
             df_payroll = df_payroll[column_order]
@@ -1156,11 +1159,11 @@ def manager_weekly_breakdown(mgr, manager_rates, df_shift_merged, week_order, pr
             df_payroll['Nova-Paid Hrs.'] = df_payroll['Hrs. Worked']
             #Correct Hours worked
             df_payroll.loc[df_payroll['Shift'].str.contains('-Not-Worked'), 'Hrs. Worked'] = 0
-            df_payroll.loc[df_payroll['Shift'].str.contains('Asleep'), 'Nova-Paid Hrs.'] = 0
+            df_payroll.loc[df_payroll['Shift'].str.contains('Asleep') & ~df_payroll['Shift'].str.contains('Holiday Extra Pay'), 'Nova-Paid Hrs.'] = 0
             df_payroll.loc[df_payroll['Shift'].str.contains('OT Extra'), 'Hrs. Paid'] = 0
             df_payroll.loc[df_payroll['Shift'].str.contains('OT Extra'), 'Hrs. Worked'] = 0
             df_payroll['Nova-Paid Gross Wages'] = df_payroll['Gross Wages']
-            df_payroll.loc[df_payroll['Shift'].str.contains('Asleep'), 'Nova-Paid Gross Wages'] = 0
+            df_payroll.loc[df_payroll['Shift'].str.contains('Asleep') & ~df_payroll['Shift'].str.contains('Holiday Extra Pay'), 'Nova-Paid Gross Wages'] = 0
             df_payroll.loc[df_payroll['Shift'].str.contains('OT Extra'), 'Gross Wages'] = 0
             column_order = ['Name', 'Shift', 'Hrs. Worked', 'Hrs. Paid', 'Nova-Paid Hrs.', 'Wage', 'Gross Wages', 'Nova-Paid Gross Wages']
             df_payroll = df_payroll[column_order]
@@ -1217,9 +1220,9 @@ def manager_weekly_breakdown(mgr, manager_rates, df_shift_merged, week_order, pr
                 df_payroll.loc[df_payroll['Shift'].str.contains('-Not-Worked'), 'Hrs. Worked'] = 0
                 df_payroll.loc[df_payroll['Shift'].str.contains('OT Extra'), 'Hrs. Paid'] = 0
                 df_payroll.loc[df_payroll['Shift'].str.contains('OT Extra'), 'Hrs. Worked'] = 0
-                df_payroll.loc[df_payroll['Shift'].str.contains('IHSS-Asleep'), 'Nova-Paid Hrs.'] = 0
+                df_payroll.loc[df_payroll['Shift'].str.contains('Asleep') & ~df_payroll['Shift'].str.contains('Holiday Extra Pay'), 'Nova-Paid Hrs.'] = 0
                 df_payroll['Nova-Paid Gross Wages'] = df_payroll['Gross Wages']
-                df_payroll.loc[df_payroll['Shift'].str.contains('IHSS-Asleep'), 'Nova-Paid Gross Wages'] = 0
+                df_payroll.loc[df_payroll['Shift'].str.contains('Asleep') & ~df_payroll['Shift'].str.contains('Holiday Extra Pay'), 'Nova-Paid Gross Wages'] = 0
                 df_payroll.loc[df_payroll['Shift'].str.contains('OT Extra'), 'Gross Wages'] = 0
                 column_order = ['Name', 'Shift', 'Hrs. Worked', 'Hrs. Paid', 'Nova-Paid Hrs.', 'Wage', 'Gross Wages', 'Nova-Paid Gross Wages']
                 df_payroll = df_payroll[column_order]
