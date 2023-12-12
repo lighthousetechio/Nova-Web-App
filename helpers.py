@@ -957,7 +957,7 @@ def manager_payroll(mgr, manager_rates, df_shift_merged, accrued_hrs, bonus_df, 
                 else: #Non exempt
                     aggregations2 = {'Min. Worked': 'sum',  'Name': 'first'}
                     tmp = deepcopy(df_weekly[['Name', 'Shift', 'Min. Worked']])
-                    tmp['Shift'] = tmp['Shift'] + " " + key
+                    tmp['Shift'] = tmp['Shift'] + " (" + key + ")"
                     tmp = tmp.groupby('Shift').agg(aggregations2)
                     tmp = tmp.reset_index() 
                     tmp['Regular Hourly Wage'] = [regular_rate]*len(tmp)
