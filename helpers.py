@@ -930,45 +930,53 @@ def manager_payroll(mgr, manager_rates, df_shift_merged, accrued_hrs, bonus_df, 
         total_hours_worked = round(df_indiv_worked['Min. Worked'].sum()/60, 2)
         regular_rate = manager_rates.loc[manager_rates['Name'] == name]['Admin/Sick/Vacay Wage'].iloc[0]
         df_payroll = pd.DataFrame()
-        if name == 'Mikayla Napier':
-            MGR_weekly_salary = manager_rates.loc[manager_rates['Name'] == name]['Exempt Semi-monthly Salary'].iloc[0]
-            df_payroll = pd.DataFrame({'Name': name, 'Shift': ['MGR Salary'], 'Min. Worked': [60.0], 'Regular Hourly Wage': [MGR_weekly_salary]})
-        else:
-            MGR_weekly_salary = manager_rates.loc[manager_rates['Name'] == name]['Exempt Weekly Salary'].iloc[0]
-            df_weeks = split_by_work_week(df_indiv)
-            for key in df_weeks.keys(): #each key is a timestamp
-                df_weekly = deepcopy(df_weeks[key])
-                df_payroll_weekly = pd.DataFrame()
-                # add prepaid time
-                if (key == week_order[0]) and (name in prepaid_ppl): #first week and prepaid
-                    df_prepaid = pd.DataFrame({'Name': name, 'Shift': ['Prepaid Last Time'], 'Min. Worked': [60.0], 
-                                               'Regular Hourly Wage': [-MGR_weekly_salary]})
-                    df_payroll_weekly = pd.concat([df_payroll_weekly, df_prepaid], ignore_index=True)
-                    df_weekly = pd.concat([prepaid_last_time.loc[prepaid_last_time.Name == name], df_weekly],ignore_index=True)
-                weekly_hours_worked = round(df_weekly['Min. Worked'].sum()/60, 2)
-                df_weekly_worked = df_weekly[~df_weekly['Shift'].str.contains('MGR-Direct-Care|-Not-Worked')]
-                exempt_hours_worked = (df_weekly_worked.loc[df_weekly_worked['Shift'] != 'MGR-Direct-Care']['Min. Worked'].sum()/60).round(2)
+        MGR_weekly_salary = manager_rates.loc[manager_rates['Name'] == name]['Exempt Weekly Salary'].iloc[0]
+        df_weeks = split_by_work_week(df_indiv)
+        # Check for casted exempt status for the manager in the pay period
+        try:
+            exempt_casted = manager_rates.loc[manager_rates['Name'] == name]['Treat as Exempt (E) or Non-Exempt (NE)'].iloc[0]
+        except:
+            exempt_casted = ""
+        for key in df_weeks.keys(): #each key is a timestamp
+            df_weekly = deepcopy(df_weeks[key])
+            df_payroll_weekly = pd.DataFrame()
+            # add prepaid time
+            if (key == week_order[0]) and (name in prepaid_ppl): #first week and prepaid
+                df_prepaid = pd.DataFrame({'Name': name, 'Shift': ['Prepaid Last Time'], 'Min. Worked': [60.0], 
+                                            'Regular Hourly Wage': [-MGR_weekly_salary]})
+                df_payroll_weekly = pd.concat([df_payroll_weekly, df_prepaid], ignore_index=True)
+                df_weekly = pd.concat([prepaid_last_time.loc[prepaid_last_time.Name == name], df_weekly],ignore_index=True)
+            weekly_hours_worked = round(df_weekly['Min. Worked'].sum()/60, 2)
+            df_weekly_worked = df_weekly[~df_weekly['Shift'].str.contains('MGR-Direct-Care|-Not-Worked')]
+            exempt_hours_worked = (df_weekly_worked.loc[df_weekly_worked['Shift'] != 'MGR-Direct-Care']['Min. Worked'].sum()/60).round(2)
+            overtime_hours = max(0, weekly_hours_worked-40)
+            # exempt status
+            if exempt_casted == "E":
+                exempt_status = True
+            elif exempt_casted == "NE":
+                exempt_status = False
+            else:
+                exempt_status = (exempt_hours_worked >= (weekly_hours_worked - exempt_hours_worked) or ((key==week_order[-1]) and PREPAY)) #True means exempt
+            # Exempt
+            if exempt_status: 
+                MGR_weekly_salary = manager_rates.loc[manager_rates['Name'] == name]['Exempt Weekly Salary'].iloc[0]
+                tmp = pd.DataFrame({'Name': name, 'Shift': ['MGR Salary'], 'Min. Worked': [60.0], 'Regular Hourly Wage': [MGR_weekly_salary]})
+                df_payroll_weekly = pd.concat([df_payroll_weekly,tmp], ignore_index=True)
+            else: #Non exempt
+                aggregations2 = {'Min. Worked': 'sum',  'Name': 'first'}
+                tmp = deepcopy(df_weekly[['Name', 'Shift', 'Min. Worked']])
+                tmp['Shift'] = tmp['Shift'] + " (" + key + ")"
+                tmp = tmp.groupby('Shift').agg(aggregations2)
+                tmp = tmp.reset_index() 
+                tmp['Regular Hourly Wage'] = [regular_rate]*len(tmp)
+                df_payroll_weekly = pd.concat([df_payroll_weekly,tmp], ignore_index=True)
                 overtime_hours = max(0, weekly_hours_worked-40)
-                # Exempt
-                if exempt_hours_worked >= (weekly_hours_worked - exempt_hours_worked) or ((key==week_order[-1]) and PREPAY): 
-                    MGR_weekly_salary = manager_rates.loc[manager_rates['Name'] == name]['Exempt Weekly Salary'].iloc[0]
-                    tmp = pd.DataFrame({'Name': name, 'Shift': ['MGR Salary'], 'Min. Worked': [60.0], 'Regular Hourly Wage': [MGR_weekly_salary]})
-                    df_payroll_weekly = pd.concat([df_payroll_weekly,tmp], ignore_index=True)
-                else: #Non exempt
-                    aggregations2 = {'Min. Worked': 'sum',  'Name': 'first'}
-                    tmp = deepcopy(df_weekly[['Name', 'Shift', 'Min. Worked']])
-                    tmp['Shift'] = tmp['Shift'] + " (" + key + ")"
-                    tmp = tmp.groupby('Shift').agg(aggregations2)
-                    tmp = tmp.reset_index() 
-                    tmp['Regular Hourly Wage'] = [regular_rate]*len(tmp)
-                    df_payroll_weekly = pd.concat([df_payroll_weekly,tmp], ignore_index=True)
-                    overtime_hours = max(0, weekly_hours_worked-40)
-                    if overtime_hours > 0:
-                        BOT_pay_rate = (0.5 * regular_rate).round(2)
-                        df_overtime = pd.DataFrame({'Name': name, 'Shift': [f'OT Extra Pay ({key})'], 
-                                                    'Min. Worked': [overtime_hours], 'Regular Hourly Wage': [BOT_pay_rate]})
-                        df_payroll_weekly= pd.concat([df_payroll_weekly, df_overtime], ignore_index=True)
-                df_payroll=pd.concat([df_payroll, df_payroll_weekly], ignore_index=True)
+                if overtime_hours > 0:
+                    BOT_pay_rate = (0.5 * regular_rate).round(2)
+                    df_overtime = pd.DataFrame({'Name': name, 'Shift': [f'OT Extra Pay ({key})'], 
+                                                'Min. Worked': [overtime_hours], 'Regular Hourly Wage': [BOT_pay_rate]})
+                    df_payroll_weekly= pd.concat([df_payroll_weekly, df_overtime], ignore_index=True)
+            df_payroll=pd.concat([df_payroll, df_payroll_weekly], ignore_index=True)
         #add holiday bonus
         holiday_work_time = df_indiv_worked['Holiday Worked Duration (Minutes)'].sum()
         if holiday_work_time > 0:
@@ -1152,99 +1160,80 @@ def manager_weekly_breakdown(mgr, manager_rates, df_shift_merged, week_order, pr
             df_holiday_pay = pd.DataFrame({'Name': name, 'Shift': ['Holiday Extra Pay'], 'Min. Worked': [holiday_work_time], 
                                             'Regular Hourly Wage': [round(0.5 * non_exempt_rate, 2)]})
             df_payroll = df_holiday_pay
-        if name == 'Mikayla Napier':
-            MGR_weekly_salary = manager_rates.loc[manager_rates['Name'] == name]['Exempt Semi-monthly Salary'].iloc[0]
-            df_payroll = pd.concat([df_payroll, pd.DataFrame({'Name': name, 'Shift': ['MGR Salary'], 'Min. Worked': [60.0], 'Regular Hourly Wage': [MGR_weekly_salary]})])
-            key = PAY_PERIOD
-            df_payroll['Min. Worked'] = pd.to_numeric(df_payroll['Min. Worked'], errors='coerce')
-            df_payroll['Hrs. Worked'] = round(df_payroll['Min. Worked']/60, 2)
-            df_payroll['Hrs. Paid'] = df_payroll['Hrs. Worked']
+        # split by week
+        MGR_weekly_salary = manager_rates.loc[manager_rates['Name'] == name]['Exempt Weekly Salary'].iloc[0]
+        df_weeks = split_by_work_week(df_indiv)
+        try:
+            exempt_casted = manager_rates.loc[manager_rates['Name'] == name]['Treat as Exempt (E) or Non-Exempt (NE)'].iloc[0]
+        except:
+            exempt_casted = ""
+        for key in df_weeks.keys(): #each key is a timestamp
+            df_weekly = deepcopy(df_weeks[key])
+            df_payroll = pd.DataFrame()
+            if (key==week_order[0]) and (name in prepaid_ppl): #prepaid
+                df_prepaid = pd.DataFrame({'Name': name, 'Shift': ['PREPAID MGR Salary'], 'Min. Worked': [60.0], 
+                                            'Regular Hourly Wage': [MGR_weekly_salary]})
+                df_payroll = pd.concat([df_payroll, df_prepaid], ignore_index=True)
+                df_weekly = pd.concat([prepaid_last_time.loc[prepaid_last_time.Name == name], df_weekly],ignore_index=True)
+            df_weekly_worked = df_weekly[~df_weekly['Shift'].str.contains('-Not-Worked')]
+            weekly_hours_worked = (df_weekly_worked['Min. Worked'].sum()/60).round(2)
+            exempt_hours_worked = (df_weekly_worked.loc[df_weekly_worked['Shift'] != 'MGR-Direct-Care']['Min. Worked'].sum()/60).round(2)
+            overtime_hours = max(0, weekly_hours_worked-40)
+            # Get exempt status
+            if exempt_casted == "E":
+                exempt_status = True
+            elif exempt_casted == "NE":
+                exempt_status = False
+            else:
+                exempt_status = (exempt_hours_worked >= (weekly_hours_worked - exempt_hours_worked) or ((key==week_order[-1]) and PREPAY)) #True means exempt
+            # Exempt
+            if exempt_status: 
+                MGR_weekly_salary = manager_rates.loc[manager_rates['Name'] == name]['Exempt Weekly Salary'].iloc[0]
+                tmp = pd.DataFrame({'Name': name, 'Shift': ['MGR Salary'], 'Min. Worked': [60.0], 'Regular Hourly Wage': [MGR_weekly_salary]})
+                df_payroll = pd.concat([df_payroll, tmp], ignore_index=True)
+            else: # Non-exempt
+                aggregations2 = {'Min. Worked': 'sum',  'Name': 'first'}
+                tmp = deepcopy(df_weekly[['Name', 'Shift', 'Min. Worked']])
+                tmp['Shift'] = tmp['Shift'] + " (" + key + ")"
+                tmp = tmp.groupby('Shift').agg(aggregations2)
+                tmp = tmp.reset_index() 
+                tmp['Regular Hourly Wage'] = [non_exempt_rate]*len(tmp)
+                df_payroll = pd.concat([df_payroll, tmp], ignore_index=True)
+                overtime_hours = max(0, weekly_hours_worked-40)
+                if overtime_hours > 0:
+                    BOT_pay_rate = 0.5 * non_exempt_rate
+                    df_overtime = pd.DataFrame({'Name': name, 'Shift': [f'OT Extra Pay ({key})'], 'Min. Worked': [overtime_hours], 
+                                                'Regular Hourly Wage': [BOT_pay_rate]})
+                    df_payroll= pd.concat([df_payroll, df_overtime], ignore_index=True)
             df_payroll = df_payroll.rename(columns={'Regular Hourly Wage': 'Wage'})
-            real_wages_paid = round((df_payroll['Wage'] * df_payroll['Hrs. Worked']).sum(), 2)
+            df_payroll['Min. Worked'] = pd.to_numeric(df_payroll['Min. Worked'], errors='coerce')
+            df_payroll['Hrs. Worked'] = (df_payroll['Min. Worked']/60).round(2)
+            df_payroll['Hrs. Paid'] = df_payroll['Hrs. Worked']
+            df_payroll = df_payroll.reindex(columns=['Name', 'Shift', 'Min. Worked', 'Hrs. Worked', 'Hrs. Paid', 'Wage'])
             df_payroll['Gross Wages'] = df_payroll['Hrs. Worked'] * df_payroll['Wage']
             df_payroll['Nova-Paid Hrs.'] = df_payroll['Hrs. Worked']
             #Correct Hours worked
             df_payroll.loc[df_payroll['Shift'].str.contains('-Not-Worked'), 'Hrs. Worked'] = 0
-            df_payroll.loc[df_payroll['Shift'].str.contains('Asleep') & ~df_payroll['Shift'].str.contains('Holiday Extra Pay'), 'Nova-Paid Hrs.'] = 0
             df_payroll.loc[df_payroll['Shift'].str.contains('OT Extra'), 'Hrs. Paid'] = 0
             df_payroll.loc[df_payroll['Shift'].str.contains('OT Extra'), 'Hrs. Worked'] = 0
+            df_payroll.loc[df_payroll['Shift'].str.contains('Asleep') & ~df_payroll['Shift'].str.contains('Holiday Extra Pay'), 'Nova-Paid Hrs.'] = 0
             df_payroll['Nova-Paid Gross Wages'] = df_payroll['Gross Wages']
             df_payroll.loc[df_payroll['Shift'].str.contains('Asleep') & ~df_payroll['Shift'].str.contains('Holiday Extra Pay'), 'Nova-Paid Gross Wages'] = 0
             df_payroll.loc[df_payroll['Shift'].str.contains('OT Extra'), 'Gross Wages'] = 0
             column_order = ['Name', 'Shift', 'Hrs. Worked', 'Hrs. Paid', 'Nova-Paid Hrs.', 'Wage', 'Gross Wages', 'Nova-Paid Gross Wages']
             df_payroll = df_payroll[column_order]
-            df_sum = pd.DataFrame(df_payroll.round(decimals=2).sum(axis=0)).T
+            df_sum = pd.DataFrame(df_payroll.loc[~df_payroll['Shift'].str.contains('PREPAID')].round(decimals=2).sum(axis=0)).T
             df_sum['Name']="TOTAL"
             df_sum['Shift']="---"
+            #when managers are prepaid they are prepaid for the whole week
+            real_wages_paid = df_payroll['Nova-Paid Gross Wages'].sum() - 2*df_payroll.loc[df_payroll['Shift'].str.contains('PREPAID')]['Nova-Paid Gross Wages'].sum()
             df_payroll = pd.concat([df_payroll, df_sum], ignore_index=True).append(pd.DataFrame(index=[1]))
-            mgr_payroll.append({'header': pd.DataFrame(columns=[name, 'Weeks of ' + key]), 
-                                        'summary': pd.DataFrame({ 
-                                            'Weekly Nova-Paid Gross Wages - Prepaid Wages': real_wages_paid
-                                                                }, index=[0]).round(decimals=2), 
-                                            'payroll': df_payroll.round(decimals=2)
-                                            }) 
-        else:
-            MGR_weekly_salary = manager_rates.loc[manager_rates['Name'] == name]['Exempt Weekly Salary'].iloc[0]
-            df_weeks = split_by_work_week(df_indiv)
-            for key in df_weeks.keys(): #each key is a timestamp
-                df_weekly = deepcopy(df_weeks[key])
-                df_payroll = pd.DataFrame()
-                if (key==week_order[0]) and (name in prepaid_ppl): #prepaid
-                    df_prepaid = pd.DataFrame({'Name': name, 'Shift': ['PREPAID MGR Salary'], 'Min. Worked': [60.0], 
-                                               'Regular Hourly Wage': [MGR_weekly_salary]})
-                    df_payroll = pd.concat([df_payroll, df_prepaid], ignore_index=True)
-                    df_weekly = pd.concat([prepaid_last_time.loc[prepaid_last_time.Name == name], df_weekly],ignore_index=True)
-                df_weekly_worked = df_weekly[~df_weekly['Shift'].str.contains('-Not-Worked')]
-                weekly_hours_worked = (df_weekly_worked['Min. Worked'].sum()/60).round(2)
-                exempt_hours_worked = (df_weekly_worked.loc[df_weekly_worked['Shift'] != 'MGR-Direct-Care']['Min. Worked'].sum()/60).round(2)
-                overtime_hours = max(0, weekly_hours_worked-40)
-                if exempt_hours_worked >= (weekly_hours_worked - exempt_hours_worked) or ((key==week_order[-1]) and PREPAY): # Exempt
-                    MGR_weekly_salary = manager_rates.loc[manager_rates['Name'] == name]['Exempt Weekly Salary'].iloc[0]
-                    tmp = pd.DataFrame({'Name': name, 'Shift': ['MGR Salary'], 'Min. Worked': [60.0], 'Regular Hourly Wage': [MGR_weekly_salary]})
-                    df_payroll = pd.concat([df_payroll, tmp], ignore_index=True)
-                else: # Non-exempt
-                    aggregations2 = {'Min. Worked': 'sum',  'Name': 'first'}
-                    tmp = deepcopy(df_weekly[['Name', 'Shift', 'Min. Worked']])
-                    tmp['Shift'] = tmp['Shift'] + " (" + key + ")"
-                    tmp = tmp.groupby('Shift').agg(aggregations2)
-                    tmp = tmp.reset_index() 
-                    tmp['Regular Hourly Wage'] = [non_exempt_rate]*len(tmp)
-                    df_payroll = pd.concat([df_payroll, tmp], ignore_index=True)
-                    overtime_hours = max(0, weekly_hours_worked-40)
-                    if overtime_hours > 0:
-                        BOT_pay_rate = 0.5 * non_exempt_rate
-                        df_overtime = pd.DataFrame({'Name': name, 'Shift': [f'OT Extra Pay ({key})'], 'Min. Worked': [overtime_hours], 
-                                                    'Regular Hourly Wage': [BOT_pay_rate]})
-                        df_payroll= pd.concat([df_payroll, df_overtime], ignore_index=True)
-                df_payroll = df_payroll.rename(columns={'Regular Hourly Wage': 'Wage'})
-                df_payroll['Min. Worked'] = pd.to_numeric(df_payroll['Min. Worked'], errors='coerce')
-                df_payroll['Hrs. Worked'] = (df_payroll['Min. Worked']/60).round(2)
-                df_payroll['Hrs. Paid'] = df_payroll['Hrs. Worked']
-                df_payroll = df_payroll.reindex(columns=['Name', 'Shift', 'Min. Worked', 'Hrs. Worked', 'Hrs. Paid', 'Wage'])
-                df_payroll['Gross Wages'] = df_payroll['Hrs. Worked'] * df_payroll['Wage']
-                df_payroll['Nova-Paid Hrs.'] = df_payroll['Hrs. Worked']
-                #Correct Hours worked
-                df_payroll.loc[df_payroll['Shift'].str.contains('-Not-Worked'), 'Hrs. Worked'] = 0
-                df_payroll.loc[df_payroll['Shift'].str.contains('OT Extra'), 'Hrs. Paid'] = 0
-                df_payroll.loc[df_payroll['Shift'].str.contains('OT Extra'), 'Hrs. Worked'] = 0
-                df_payroll.loc[df_payroll['Shift'].str.contains('Asleep') & ~df_payroll['Shift'].str.contains('Holiday Extra Pay'), 'Nova-Paid Hrs.'] = 0
-                df_payroll['Nova-Paid Gross Wages'] = df_payroll['Gross Wages']
-                df_payroll.loc[df_payroll['Shift'].str.contains('Asleep') & ~df_payroll['Shift'].str.contains('Holiday Extra Pay'), 'Nova-Paid Gross Wages'] = 0
-                df_payroll.loc[df_payroll['Shift'].str.contains('OT Extra'), 'Gross Wages'] = 0
-                column_order = ['Name', 'Shift', 'Hrs. Worked', 'Hrs. Paid', 'Nova-Paid Hrs.', 'Wage', 'Gross Wages', 'Nova-Paid Gross Wages']
-                df_payroll = df_payroll[column_order]
-                df_sum = pd.DataFrame(df_payroll.loc[~df_payroll['Shift'].str.contains('PREPAID')].round(decimals=2).sum(axis=0)).T
-                df_sum['Name']="TOTAL"
-                df_sum['Shift']="---"
-                #when managers are prepaid they are prepaid for the whole week
-                real_wages_paid = df_payroll['Nova-Paid Gross Wages'].sum() - 2*df_payroll.loc[df_payroll['Shift'].str.contains('PREPAID')]['Nova-Paid Gross Wages'].sum()
-                df_payroll = pd.concat([df_payroll, df_sum], ignore_index=True).append(pd.DataFrame(index=[1]))
-                mgr_payroll.append({'header': pd.DataFrame(columns=[name, 'Week of ' + key]), 
-                                        'summary': pd.DataFrame({ 
-                                            'Weekly Nova-Paid Gross Wages - Prepaid Wages': real_wages_paid
-                                                                }, index=[0]).round(decimals=2), 
-                                            'payroll': df_payroll.round(decimals=2)
-                                            })   
+            mgr_payroll.append({'header': pd.DataFrame(columns=[name, 'Week of ' + key]), 
+                                    'summary': pd.DataFrame({ 
+                                        'Weekly Nova-Paid Gross Wages - Prepaid Wages': real_wages_paid
+                                                            }, index=[0]).round(decimals=2), 
+                                        'payroll': df_payroll.round(decimals=2)
+                                        })   
     return mgr_payroll
 
 def generate_payroll(df_shift_merged, accrued_hrs, bonus_df, bonus, time_off, manager_rates, staff_info, prepaid_last_time, 
@@ -1364,15 +1353,18 @@ def output_payroll_files(save_path, df_shift_merged, staff_info, non_mgr_pr, mgr
     for column in original_bonus_df.columns:
         if column not in columns_to_keep:
             original_bonus_df[column] = [np.nan]*len(original_bonus_df)
-
+    # write to excel
     original_bonus_df.to_excel(writer, sheet_name='NEW PTO & BONUS INFO', index=False)
     non_manager_rates.to_excel(writer, sheet_name='SHIFT INFO', index=False)
     staff_info.to_excel(writer, sheet_name='STAFF INFO', index=False)
+    # clear special manager exempt status, if it exists.
+    if 'Treat as Exempt (E) or Non-Exempt (NE)' in manager_rates.columns:
+        manager_rates['Treat as Exempt (E) or Non-Exempt (NE)'] = ""    
     manager_rates.to_excel(writer, sheet_name='MANAGER INFO', index=False)
     new_accrued_hrs.to_excel(writer, sheet_name="HRS & ACCRUALS", index=False)
     prepaid_hours.to_excel(writer, sheet_name='IGNORE! (Prepaid Shifts)', index=False)
     df_after_pay_period.to_excel(writer, sheet_name='IGNORE! (Next Period Shifts)', index=False)
-
+    # format columns
     for column in original_bonus_df:
         column_length = max(original_bonus_df[column].astype(str).map(len).max(), len(column))
         col_idx = original_bonus_df.columns.get_loc(column)
