@@ -147,8 +147,9 @@ def approved_holiday(years):
         approved_holiday = approved_holiday.union(holiday_ls)
         approved_holiday.add(easter(year)) #Easter
         approved_holiday.add(datetime.date(year, 12, 24)) #Christmas eve
-        approved_holiday.add(datetime.date(year, 12, 31)) #NewYear
-        approved_holiday.add(datetime.date(year-1, 12, 31)) #Last NewYear
+        approved_holiday.add(datetime.date(year, 12, 31)) #New Year eve
+        approved_holiday.add(datetime.date(year, 1, 1)) # New Year day 
+        approved_holiday.add(datetime.date(year-1, 12, 31)) #Last New Year
     return approved_holiday
 
 def approved_holiday_hours(years):
