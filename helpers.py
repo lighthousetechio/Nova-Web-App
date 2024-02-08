@@ -388,8 +388,8 @@ def read_shift_record(shift_record_path):
     #filters out shifts of type "Adaptive Behavior Treatment" since Nova doesn't pay for those
     #df = df.loc[~df['Shift'].str.contains('Adaptive Behavior Treatment')]
     df['Shift'] = df['Shift'].replace({'Training-HSS': 'HSS1', 'Training-RBT': 'BST1'})
-    #calculate holiday hours
-    calc_worked_holiday(df)
+    #drop staff worked duration
+    df = df.drop('Staff Worked Duration (Minutes)', axis=1)
     return (df, PAY_PERIOD, start_date, end_date)
 
 def read_one_person_record(shift_record_path, selected_name):
@@ -470,10 +470,6 @@ def read_one_person_record(shift_record_path, selected_name):
         CIDT = CIDT.apply(lambda x: datetime.datetime.strptime(x, r'%m/%d/%Y %I:%M %p'))
         CODT = CODT.apply(lambda x: datetime.datetime.strptime(x, r'%m/%d/%Y %I:%M %p'))
         PAY_PERIOD = str(CIDT.min().date()) + ' - ' + str(CIDT.max().date())
-        start_date, end_date = PAY_PERIOD.split(' - ')
-        start_date = datetime.datetime.strptime(start_date, '%Y-%m-%d')
-        end_date = datetime.datetime.strptime(end_date, '%Y-%m-%d')
-        end_date = end_date + datetime.timedelta(days=1)
         # add python-format datetime to the dataframe
         df['CIDT'] = CIDT
         df['CODT'] = CODT
@@ -521,8 +517,8 @@ def read_one_person_record(shift_record_path, selected_name):
     #filters out shifts of type "Adaptive Behavior Treatment" since Nova doesn't pay for those
     #df = df.loc[~df['Shift'].str.contains('Adaptive Behavior Treatment')]
     df['Shift'] = df['Shift'].replace({'Training-HSS': 'HSS1', 'Training-RBT': 'BST1'})
-    #calculate holiday hours
-    calc_worked_holiday(df)
+    #drop staff worked duration
+    df = df.drop('Staff Worked Duration (Minutes)', axis=1)
     return (df, PAY_PERIOD, start_date, end_date)
 
 def read_old_tracker(old_tracker_path, start_date):
@@ -677,8 +673,7 @@ def merge_shifts(df, staff_info, manager_rates, non_manager_rates):
         columns_to_remove = [col for col in df_shift_merged.columns if col.startswith("# ")] + ['Billing Rates', 'Accrual Rate_x', 
                                                                                                 'Hire Date', 'BST Level', 'HSS Level', 
                                                                                                 'OA Level', 'Accrual Rate_y',
-                                                                                                'Days Elapsed Since Hire Date', 'Admin/Sick/Vacay Wage', 
-                                                                                                'Staff Worked Duration (Minutes)']
+                                                                                                'Days Elapsed Since Hire Date', 'Admin/Sick/Vacay Wage']
         df_shift_merged = df_shift_merged.drop(columns=columns_to_remove)
     return df_shift_merged
 
@@ -1292,10 +1287,10 @@ def output_payroll_files(save_path, df_shift_merged, staff_info, non_mgr_pr, mgr
     df_shift_merged['Day of the Week'] = df_shift_merged['CIDT'].dt.day_name()
     df_shift_merged = df_shift_merged[['Name', 'First Name', 'Last Name', 'Shift_original', 'Shift','Day of the Week', 'Check-In Date', 'Check-In Time', 
                                        'Check-Out Date', 'Check-Out Time', 'Min. Worked', 'Hrs. Worked',  'Regular Hourly Wage', 'BOT Hourly Wage', 'Accrual Rate',
-                                       'Error Check', 'CIDT', 'CODT','Holiday Worked Duration (Minutes)','Holiday Worked Duration (Hours)']]
+                                       'CIDT', 'CODT','Holiday Worked Duration (Minutes)','Holiday Worked Duration (Hours)']]
     df_shift_merged = df_shift_merged.reindex(columns=['Name', 'First Name', 'Last Name', 'Shift_original', 'Shift','Day of the Week', 'Check-In Date', 
                                                        'Check-In Time', 'Check-Out Date', 'Check-Out Time', 'Min. Worked', 'Hrs. Worked',  'Regular Hourly Wage', 
-                                                       'BOT Hourly Wage', 'Accrual Rate','Error Check', 'CIDT', 'CODT','Holiday Worked Duration (Minutes)',
+                                                       'BOT Hourly Wage', 'Accrual Rate', 'CIDT', 'CODT','Holiday Worked Duration (Minutes)',
                                                        'Holiday Worked Duration (Hours)'])
     #prepare payrolls
     payroll_list = [ *non_mgr_pr, *mgr_pr ]
@@ -1418,11 +1413,11 @@ def output_payroll_for_one(selected_name, save_path, df_shift_merged, non_mgr_pr
     df_shift_merged['Day of the Week'] = df_shift_merged['CIDT'].dt.day_name()
     df_shift_merged = df_shift_merged[['Name', 'First Name', 'Last Name', 'Shift_original', 'Shift','Day of the Week', 'Check-In Date', 'Check-In Time', 
                                     'Check-Out Date', 'Check-Out Time', 'Min. Worked', 'Hrs. Worked',  'Regular Hourly Wage', 'BOT Hourly Wage', 'Accrual Rate',
-                                    'Error Check', 'CIDT', 'CODT','Holiday Worked Duration (Minutes)','Holiday Worked Duration (Hours)']]
+                                    'CIDT', 'CODT','Holiday Worked Duration (Minutes)','Holiday Worked Duration (Hours)']]
     df_shift_merged = df_shift_merged.reindex(columns=['Name', 'First Name', 'Last Name', 'Shift_original', 'Shift','Day of the Week', 'Check-In Date', 
                                                     'Check-In Time', 'Check-Out Date', 'Check-Out Time', 'Min. Worked', 'Hrs. Worked',  'Regular Hourly Wage', 
-                                                    'BOT Hourly Wage', 'Accrual Rate','Error Check', 'CIDT', 'CODT','Holiday Worked Duration (Minutes)',
-                                                    'Holiday Worked Duration (Hours)'])
+                                                    'BOT Hourly Wage', 'Accrual Rate', 'CIDT', 'CODT','Holiday Worked Duration (Minutes)',
+                                                    'Holiday Worked Duration (Hours)']) 
     payroll_list = [ *non_mgr_pr, *mgr_pr ]
     bkd_list = [ *non_mgr_bkd, *mgr_bkd ]
     sorted_bkd_list = sorted(bkd_list, key=lambda x: x['header'].columns[0].split()[-1])
@@ -2013,11 +2008,11 @@ def output_invoice(save_path, shift_list, output, mgr_benefits, df_benefits, tot
     df_shift_merged['Day of the Week'] = df_shift_merged['CIDT'].dt.day_name()
     df_shift_merged = df_shift_merged[['Name', 'First Name', 'Last Name', 'Shift_original', 'Shift','Day of the Week', 'Check-In Date', 
                                        'Check-In Time', 'Check-Out Date', 'Check-Out Time', 'Min. Worked', 'Hrs. Worked',  'Regular Hourly Wage', 
-                                       'BOT Hourly Wage', 'Accrual Rate','Error Check', 'CIDT', 'CODT','Holiday Worked Duration (Minutes)',
+                                       'BOT Hourly Wage', 'Accrual Rate', 'CIDT', 'CODT','Holiday Worked Duration (Minutes)',
                                        'Holiday Worked Duration (Hours)']]
     df_shift_merged = df_shift_merged.reindex(columns=['Name', 'First Name', 'Last Name', 'Shift_original', 'Shift','Day of the Week', 'Check-In Date', 
                                                        'Check-In Time', 'Check-Out Date', 'Check-Out Time', 'Min. Worked', 'Hrs. Worked',  
-                                                       'Regular Hourly Wage', 'BOT Hourly Wage', 'Accrual Rate','Error Check', 'CIDT', 
+                                                       'Regular Hourly Wage', 'BOT Hourly Wage', 'Accrual Rate', 'CIDT', 
                                                        'CODT','Holiday Worked Duration (Minutes)','Holiday Worked Duration (Hours)'])
     df_shift_merged.to_excel(writer, "Shift Breakdowns", index=False)
 

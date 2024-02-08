@@ -72,12 +72,16 @@ def process_cycle():
         df, PAY_PERIOD, start_date, end_date = read_shift_record(shift_record_path)
         #read old tracker adn check for errors
         manager_rates, non_manager_rates, accrued_hrs, bonus_df, bonus, original_bonus_df, staff_info, prepaid_last_time, unpaid_last_time = read_old_tracker(tracker_path, start_date)
+        # format unpaid_last)time
+        unpaid_last_time = unpaid_last_time[df.columns]
+        #append overight shifts unpaid last time with df
+        df = pd.concat([df, unpaid_last_time], ignore_index=True)
         #merge shift record with pay rates from the tracker
         df_shift_merged = merge_shifts(df, staff_info, manager_rates, non_manager_rates)
+        # calculate worked holidays
+        df_shift_merged = calc_worked_holiday(df_shift_merged)
         #calculate vacation and sick times
         df_shift_merged, time_off, time_off_as_shifts = calc_time_off(df_shift_merged)
-        #merge overight shifts unpaid last time with df_shift_merged
-        df_shift_merged = pd.concat([unpaid_last_time, df_shift_merged], ignore_index=True)
         #crop the shift record based on pay cycle
         df_shift_merged, df_after_pay_period, prepaid_hours, week_order, PREPAY = crop_shifts(df_shift_merged, start_date, end_date)
         #generate payroll outputs
@@ -111,12 +115,14 @@ def process_one():
                 df, PAY_PERIOD, start_date, end_date = read_one_person_record(shift_record_path, selected_name)
                 #read old tracker adn check for errors
                 manager_rates, non_manager_rates, accrued_hrs, bonus_df, bonus, original_bonus_df, staff_info, prepaid_last_time, unpaid_last_time = read_old_tracker(tracker_path, start_date)
+                unpaid_last_time = unpaid_last_time[df.columns]
+                #append overight shifts unpaid last time with df
+                df = pd.concat([df, unpaid_last_time], ignore_index=True)
                 #merge shift record with pay rates from the tracker
                 df_shift_merged = merge_shifts(df, staff_info, manager_rates, non_manager_rates)
-                #calculate vacation and sick times
+                # calculate worked holidays
+                df_shift_merged = calc_worked_holiday(df_shift_merged)
                 df_shift_merged, time_off, time_off_as_shifts = calc_time_off(df_shift_merged)
-                #merge overight shifts unpaid last time with df_shift_merged
-                df_shift_merged = pd.concat([unpaid_last_time, df_shift_merged], ignore_index=True)
                 #crop the shift record based on pay cycle
                 df_shift_merged, df_after_pay_period, prepaid_hours, week_order, PREPAY = crop_shifts(df_shift_merged, start_date, end_date)
                 #generate payroll outputs
