@@ -8,6 +8,7 @@ import os
 from flask import Flask, render_template, request, send_file, redirect, jsonify
 from helpers import *
 import time
+from werkzeug.utils import secure_filename
 
 #initialize app
 app = Flask(__name__)
@@ -19,6 +20,9 @@ app.config['PROCESSED_FILES_FOLDER'] = 'processed_files'
 
 #allowed extension
 app.config['ALLOWED_EXTENSIONS'] = {'xlsx'}
+
+shift_record_file_name = ''
+tracker_file_name = ''
 
 #check if the file names has the extension required
 def allowed_file(filename):
@@ -34,8 +38,10 @@ def index():
 #upload shift record
 @app.route('/shift_record', methods=['POST'])
 def upload_shift_record():
+    global shift_record_file_name
     delete_files_in_folder("./processed_files")
     file = request.files['shift_record']
+    shift_record_file_name = secure_filename(file.filename)  
     if file and allowed_file(file.filename):
         filename = 'shift_record.xlsx'
         file.save(os.path.join(app.config['SHIFT_RECORD_FOLDER'], filename))
@@ -47,8 +53,10 @@ def upload_shift_record():
 #upload old tracker
 @app.route('/old_tracker', methods=['POST'])
 def upload_tracker():
+    global tracker_file_name
     delete_files_in_folder("./processed_files")
     file = request.files['old_tracker']
+    tracker_file_name = secure_filename(file.filename)  
     if file and allowed_file(file.filename):
         filename = 'old_tracker.xlsx'
         file.save(os.path.join(app.config['OLD_TRACKER_FOLDER'], filename))
@@ -60,6 +68,10 @@ def upload_tracker():
 #process file for the whole cycle
 @app.route('/process_cycle', methods=['POST'])
 def process_cycle():
+    global shift_record_file_name
+    global tracker_file_name
+    if not file_dates_match(shift_record_file_name, tracker_file_name):
+        return jsonify({"status": "error", "message": "The pay period start and end dates in the shift record and the old tracker do not match. yyyy-mm-dd."})
     # Implement file processing logic here
     try:
         #folder paths
@@ -157,10 +169,14 @@ def download_file(filename):
 #refresh the processor for a new session.
 @app.route('/refresh')
 def refresh_page():
+    global shift_record_file_name
+    global tracker_file_name
     # Extract the URL from the Referer header or default to the index page
     delete_files_in_folder("./shift_record")
     delete_files_in_folder("./old_tracker")
     delete_files_in_folder("./processed_files")
+    shift_record_file_name = ''
+    tracker_file_name = ''
     referer_url = request.headers.get('Referer', '/')
     return redirect(referer_url)
 

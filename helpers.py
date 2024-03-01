@@ -45,6 +45,38 @@ def delete_files_in_folder(folder_path):
     except Exception as e:
         return False, str(e)  # Error occurred
 
+
+def extract_dates_from_filename(file_name):
+    """
+    Extracts start and end dates from a file name using regular expressions.
+    """
+    pattern = r"(\d{4}-\d{1,2}-\d{1,2})"
+    dates = re.findall(pattern, file_name)
+    if len(dates) != 2:
+        return False, False
+    return dates[0], dates[1]  # Return start and end dates
+
+def file_dates_match(file_name_1, file_name_2):
+    """
+    Compares the start and end dates in two file names.
+    Return false if there's a difference.
+    """
+    start_date_1, end_date_1 = extract_dates_from_filename(file_name_1)
+    start_date_2, end_date_2 = extract_dates_from_filename(file_name_2)
+    if start_date_1 == False or start_date_2 == False:
+        return False
+    # Convert string dates to datetime objects for accurate comparison
+    start_date_1 = datetime.datetime.strptime(start_date_1, "%Y-%m-%d")
+    end_date_1 = datetime.datetime.strptime(end_date_1, "%Y-%m-%d")
+    start_date_2 = datetime.datetime.strptime(start_date_2, "%Y-%m-%d")
+    end_date_2 = datetime.datetime.strptime(end_date_2, "%Y-%m-%d")
+    
+    if start_date_1 != start_date_2 or end_date_1 != end_date_2:
+        return False
+
+    return True
+
+
 def get_name_list(shift_record_path, old_tracker_path):
     '''
     Get a list of names of non-managers from shift record
@@ -574,7 +606,7 @@ def read_old_tracker(old_tracker_path, start_date):
                 stf_info2.loc[index, level] = row['# HSS']
     # Remove the original BST Level, OA Level, and HSS Level columns and create a new dataframe
     stf_info2 = stf_info2.drop(['BST Level', 'OA Level', 'HSS Level', '# HSS', '# BST', '# OA', 'Hire Date', 
-                                'Accrual Rate', 'Days Elapsed Since Hire Date', 'Admin/Sick/Vacay Wage'], axis=1)
+                                'Accrual Rate', 'Days Elapsed Since Hire Date', 'Admin/Sick/Vacay Wage', 'Reimbursable Mileage', 'Expense Reimbursement'], axis=1)
     stf_info2 = stf_info2.rename(columns=lambda x: x.replace("# ", ""))
     stf_info2.columns = stf_info2.columns.str.strip()
     stf_info2 = stf_info2.fillna(0)
@@ -1310,10 +1342,24 @@ def output_payroll_files(save_path, df_shift_merged, staff_info, non_mgr_pr, mgr
             startrow += (df.shape[0] + 1)
         startrow += 3
     #print total gross wages paid
-    df = pd.DataFrame({'Sum of Total Gross Wages': [total_gross_paid]})
-    df.to_excel(writer, engine="xlsxwriter",sheet_name='FINAL PAYROLL', startrow=startrow, index=False)
+    sum_total_gross_wage = pd.DataFrame({'Sum of Total Gross Wages': [total_gross_paid]})
+    sum_total_gross_wage.to_excel(writer, engine="xlsxwriter",sheet_name='FINAL PAYROLL', startrow=startrow, index=False)
+    startrow += 3
+    #reimbursements
+    mgr_reim = manager_rates[['Name', 'Reimbursable Mileage', 'Expense Reimbursement']]
+    stf_reim = staff_info[['Name', 'Reimbursable Mileage', 'Expense Reimbursement']]
+    reim = pd.concat([mgr_reim, stf_reim])
+    # Conditions to filter rows where both columns are either missing, both are empty strings, or both are zeros
+    condition = ~(
+        (pd.isna(reim['Reimbursable Mileage']) | (reim['Reimbursable Mileage'] == 0) | (reim['Reimbursable Mileage'] == "")) &
+        (pd.isna(reim['Expense Reimbursement']) | (reim['Expense Reimbursement'] == 0) | (reim['Expense Reimbursement'] == ""))
+    )
+    # Apply the condition to filter the DataFrame
+    reim = reim[condition]
+    if len(reim) > 0:
+        reim.to_excel(writer, engine="xlsxwriter",sheet_name='FINAL PAYROLL', startrow=startrow, index=False)
     writer.sheets['FINAL PAYROLL'].set_column('A:F', 24)
-
+    
     startrow = 0
     name = "NOVA"
     for index, person in enumerate(sorted_bkd_list):
@@ -1323,7 +1369,6 @@ def output_payroll_files(save_path, df_shift_merged, staff_info, non_mgr_pr, mgr
                 startrow += 3
             person['header'].columns=person['header'].columns.str.upper()
         name = person['header'].columns[0]
-        last_name = sorted_bkd_list[-1]
         for df in [person['header'], person['payroll'], person['summary']]:
             df.to_excel(writer, engine="xlsxwriter",sheet_name='WEEKLY BREAKDOWNS', startrow=startrow, index=False)
             startrow += (df.shape[0] + 1)
@@ -1349,13 +1394,18 @@ def output_payroll_files(save_path, df_shift_merged, staff_info, non_mgr_pr, mgr
     for column in original_bonus_df.columns:
         if column not in columns_to_keep:
             original_bonus_df[column] = [np.nan]*len(original_bonus_df)
+    # clear Reimbursable Mileage and Expense Reimbursement
+    manager_rates['Reimbursable Mileage'] = ''
+    manager_rates['Expense Reimbursement'] = ''
+    staff_info['Reimbursable Mileage'] = ''
+    staff_info['Expense Reimbursement'] = ''
+        # clear special manager exempt status, if it exists.
+    if 'Treat as Exempt (E) or Non-Exempt (NE)' in manager_rates.columns:
+        manager_rates['Treat as Exempt (E) or Non-Exempt (NE)'] = ""    
     # write to excel
     original_bonus_df.to_excel(writer, sheet_name='NEW PTO & BONUS INFO', index=False)
     non_manager_rates.to_excel(writer, sheet_name='SHIFT INFO', index=False)
     staff_info.to_excel(writer, sheet_name='STAFF INFO', index=False)
-    # clear special manager exempt status, if it exists.
-    if 'Treat as Exempt (E) or Non-Exempt (NE)' in manager_rates.columns:
-        manager_rates['Treat as Exempt (E) or Non-Exempt (NE)'] = ""    
     manager_rates.to_excel(writer, sheet_name='MANAGER INFO', index=False)
     new_accrued_hrs.to_excel(writer, sheet_name="HRS & ACCRUALS", index=False)
     prepaid_hours.to_excel(writer, sheet_name='IGNORE! (Prepaid Shifts)', index=False)
