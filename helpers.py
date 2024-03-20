@@ -1514,11 +1514,11 @@ def generate_invoice(df_shift_merged, manager_rates, non_manager_rates, staff_in
     # bill_rates: map name of shift to the billing rate
     # other_shifts: list of non-billable shifts
     # shift_list: list of all shifts, both billable and non-billable
-
     bill_rates = {}
     other_shifts = []
     shift_list = []
     payroll_list = [ *non_mgr_pr, *mgr_pr ]
+    df_shift_merged['Hrs. Worked'] = round(df_shift_merged['Min. Worked']/60, 2)
     for _, row in non_manager_rates.iterrows():
         # shift: name of the shift
         shift = row[0]
@@ -1689,6 +1689,10 @@ def generate_invoice(df_shift_merged, manager_rates, non_manager_rates, staff_in
         wages.append(mgr_gross[col])
     # 3) add row
     mgr_benefits.loc[len(mgr_benefits.index)] = wages
+    # replace NaN
+    mgr_benefits = mgr_benefits.replace('', np.nan)
+    # Now fill all NaN values with 0
+    mgr_benefits = mgr_benefits.fillna(0)
     # sum the columns
     totals = mgr_benefits.sum()
     totals = totals.to_frame().transpose()
