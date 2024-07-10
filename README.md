@@ -6,7 +6,7 @@ Inputs: shift record (.xlsx) from Therap and old tracker (.xlsx) maintained by t
 
 Outputs:
 
-A. Full Cycle: a payroll output, a new tracker, an invoice (all .xlsx), and a payroll for machine (.csv).
+A. Full Cycle: a payroll output, a new tracker, an invoice (all .xlsx), and a payroll for machine (.csv)..
 
 B. Off Cycle: a payroll output (.xlsx) for selected staff and a payroll for machine (.csv).
 
