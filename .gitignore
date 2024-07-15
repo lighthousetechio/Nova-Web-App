@@ -3,6 +3,3 @@ __pycache__/
 .ipynb_checkpoints
 *.ipynb
 .idea
-processed_files
-old_tracker
-shift_record
