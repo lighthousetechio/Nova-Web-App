@@ -173,7 +173,7 @@ def approved_holiday(years):
     '''
     # set of holidays
     approved_holiday = set()
-    holiday_set = set(["Thanksgiving", "Christmas Day"])
+    holiday_set = set(["Thanksgiving", "Christmas Day", "Labor Day"])
     for year in years:
         holiday_ls = {k for k, v in holidays.US(years=year).items() if v in holiday_set}
         approved_holiday = approved_holiday.union(holiday_ls)
@@ -182,6 +182,8 @@ def approved_holiday(years):
         approved_holiday.add(datetime.date(year, 12, 31)) #New Year eve
         approved_holiday.add(datetime.date(year, 1, 1)) # New Year day 
         approved_holiday.add(datetime.date(year-1, 12, 31)) #Last New Year
+        approved_holiday.add(datetime.date(year, 7, 4)) #Independence Day
+
     return approved_holiday
 
 def approved_holiday_hours(years):
