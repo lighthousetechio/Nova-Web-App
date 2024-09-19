@@ -1695,6 +1695,9 @@ def generate_invoice(df_shift_merged, manager_rates, non_manager_rates, staff_in
     mgr_benefits = mgr_benefits.replace('', np.nan)
     # Now fill all NaN values with 0
     mgr_benefits = mgr_benefits.fillna(0)
+    print (mgr_benefits)
+    mgr_benefits.drop(index=0, inplace=True)
+    print (mgr_benefits)
     # sum the columns
     totals = mgr_benefits.sum()
     totals = totals.to_frame().transpose()
