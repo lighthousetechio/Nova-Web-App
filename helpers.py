@@ -199,10 +199,9 @@ def approved_holiday_hours(years):
     approved_holiday_dt = []
     #append holiday hours according to Nova's unique rule.
     for x in approved_holiday(years):
-        if (x.month == 12 and x.day == 31):
-            approved_holiday_dt.append(Range(start = datetime.datetime.combine(x, datetime.time(hour=15)),end = datetime.datetime.combine(x+datetime.timedelta(days=1), datetime.time(hour=0))))
-        else:
-            approved_holiday_dt.append(Range(start = datetime.datetime.combine(x, datetime.time(hour=0)), end = datetime.datetime.combine(x+datetime.timedelta(days=1), datetime.time(hour=0))))
+        approved_holiday_dt.append(Range(start=datetime.datetime.combine(x, datetime.time(hour=0)),
+                                         end=datetime.datetime.combine(x + datetime.timedelta(days=1),
+                                                                       datetime.time(hour=0))))
     return approved_holiday_dt
 
 def work_holiday_overlap(work_range, ahh_list):
